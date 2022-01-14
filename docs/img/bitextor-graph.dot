@@ -1,0 +1,41 @@
+digraph Snakemake {
+  label="Bitextor Snakemake path chart"
+
+  #Nodes
+  Creepy [label="Creepy\n-url"]
+  Httrack [label="Httrack\n-url"]
+  Wget [label="Wget\n-url"]
+  Heritrix [label="Heritrix\n-url"]
+  Linguacrawl [label="Linguacrawl\n-url"]
+  WARCProcess [label="WARC processor"]
+  DocalignDict [label="Docalign Dict\n-dic\n-wordtok1\n-wordtok2"]
+  DocalignMT [label="Docalign Custom MT\n-doc_threshold\n-mt_command\n-wordtok1"]
+  TrainMT [label="Train NMT\n-train corpus\n-test corpus\n-dev corpus"]
+  SymmetriseDic [label="Symmetrise Dict.\n-corpus_dict"]
+  DocalignMT [label="Docalign MT", style=dashed]
+  Hunalign [label="Hunalign\n-dict\n-wordtok1\n-wordtok2\n-senttok1\n-senttok2"]
+  Bleualign [label="Bleualign\n-matches"]
+  Bicleaner [label="Bicleaner\n-config\n-threshold"]
+  BicleanerTrain [label="Bicleaner Train\n-corpus_bicleaner"]
+  ELRC
+  Postproc [label="Postproc\n-deferred\n-ROAM", style=dashed]
+  Bifixer [style=rounded]
+  Sents [style=rounded]
+  TMX [style=rounded]
+  DedupTMX [style=rounded]
+
+  #Relations
+  {Creepy,Httrack,Wget,Heritrix,Linguacrawl} -> WARCProcess [label="!warc", style=dashed]
+  WARCProcess -> {DocalignDict,DocalignMT}
+  SymmetriseDic -> {DocalignDict,Hunalign} [label="!dict", style=dotted]
+  TrainMT -> DocalignMT [label="!model", style=dotted]
+  {DocalignDict,DocalignMT} -> Hunalign
+  DocalignMT -> Bleualign
+  BicleanerTrain -> Bicleaner [label="!config", style=dotted]
+  {Hunalign,Bleualign} -> Bifixer [style=dashed]
+  {Hunalign,Bleualign,Bifixer} -> Bicleaner [style=dashed]
+  {Hunalign,Bleualign,Bifixer,Bicleaner} -> ELRC [style=dashed]
+  {Hunalign,Bleualign,Bifixer,Bicleaner,ELRC} -> Postproc [style=dashed]
+  Postproc -> {Sents,TMX,DedupTMX}
+
+}

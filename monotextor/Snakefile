@@ -1,0 +1,950 @@
+import os
+import sys
+import subprocess
+import pprint
+import gzip
+import base64
+
+from monotextor.utils.args import validate_args
+from monotextor.utils.common import (
+    open_xz_or_gzip_or_plain,
+    get_all_ppids,
+    snake_no_more_race_get_pgid,
+    duration_to_seconds,
+)
+
+valid, config = validate_args(config)
+
+if not valid:
+    raise Exception("provided configuration is not valid")
+
+#################################################################
+include: "rules/common.smk"
+
+
+#################################################################
+# BASIC PARAMETERS
+
+WORKFLOW = workflow.basedir
+DATADIR = config["dataDir"]
+PERMANENT = config["permanentDir"]
+TMPDIR = config["tempDir"]
+
+LANGS = set()
+
+if "langs" in config:
+    LANGS = set(config["langs"])
+
+PROFILING = ""
+if "profiling" in config and config["profiling"]:
+    PROFILING = "\\time -v"
+
+#################################################################
+# CRAWLING
+CRAWLTARGET = ""
+TLD_CRAWL = []
+USERAGENT = "Mozilla/5.0 (compatible; Bitextor/8 +https://github.com/bitextor/monotextor)"
+CRAWLSIZELIMIT = ""
+CRAWLTIMELIMIT = ""
+CRAWLWAIT = ""
+CRAWLFILETYPES = []
+CRAWLJOBS = "2"
+CRAWLTIMEOUT = "10"
+CRAWLDUMPARGS = ""
+CONTINUECRAWL = False
+HERITRIXPATH = ""
+HERITRIXURL = "https://localhost:8443"
+HERITRIXUSER = "admin:admin"
+CRAWLMAXFOLDERTREEDEPTH = "20"
+CRAWLSCOUTSTEPS = "200"
+CRAWLBLACKLISTURL = ['wordpress','blogspot','facebook','google','wikipedia','youtube','perehodi','twitter','instagram']
+CRAWLPREFIXFILTER = ['mailto:']
+
+if "crawler" in config:
+    CRAWLTARGET = config["crawler"]
+
+    if CRAWLTARGET == "linguacrawl":
+        # TODO should we change this default value, as we have done with wget, as well?
+        CRAWLFILETYPES = ["text/html", "application/pdf"]
+if "crawlTLD" in config and config["crawlTLD"]:
+    TLD_CRAWL = config["crawlTLD"]
+if "crawlerUserAgent" in config:
+    USERAGENT = config["crawlerUserAgent"]
+if "crawlSizeLimit" in config:
+    CRAWLSIZELIMIT = str(config["crawlSizeLimit"])
+if "crawlTimeLimit" in config:
+    CRAWLTIMELIMIT = str(duration_to_seconds(config["crawlTimeLimit"]))
+if "crawlWait" in config:
+    CRAWLWAIT = str(config["crawlWait"])
+if "crawlFileTypes" in config:
+    CRAWLFILETYPES = config["crawlFileTypes"]
+if "crawlerNumThreads" in config:
+    CRAWLJOBS = str(config["crawlerNumThreads"])
+if "crawlerConnectionTimeout" in config:
+    CRAWLTIMEOUT = str(config["crawlerConnectionTimeout"])
+if "dumpCurrentCrawl" in config:
+    CRAWLDUMPARGS = config["dumpCurrentCrawl"]
+if "resumePreviousCrawl" in config:
+    CONTINUECRAWL = config["resumePreviousCrawl"]
+if "heritrixPath" in config:
+    HERITRIXPATH = config["heritrixPath"]
+if "heritrixUrl" in config:
+    HERITRIXURL = config["heritrixUrl"]
+if "heritrixUser" in config:
+    HERITRIXUSER = config["heritrixUser"]
+if "crawlMaxFolderTreeDepth" in config:
+    CRAWLMAXFOLDERTREEDEPTH = config["crawlMaxFolderTreeDepth"]
+if "crawlScoutSteps" in config:
+    CRAWLSCOUTSTEPS = config["crawlScoutSteps"]
+if "crawlBlackListURL" in config:
+    CRAWLBLACKLISTURL = config["crawlBlackListURL"]
+if "crawlPrefixFilter" in config:
+    CRAWLPREFIXFILTER = config["crawlPrefixFilter"]
+
+#################################################################
+# PREPROCESS
+PPROC = "warc2text"
+PPROC_FILES = ["text.gz", "url.gz", "mime.gz"]
+TEXT_FILE = "text.gz"
+HTML_FILE = ""
+
+if "writeHTML" in config and config["writeHTML"]:
+    HTML_FILE = "html.gz"
+    PPROC_FILES.append("html.gz")
+
+if "preprocessor" in config:
+    if config["preprocessor"] == "warc2preprocess":
+        PPROC = "w2p"
+        PPROC_FILES = ["plain_text.gz", "url.gz", "mime.gz", "normalized_html.gz", "deboilerplate_html.gz"]
+        TEXT_FILE = "plain_text.gz"
+        HTML_FILE = "deboilerplate_html.gz"
+    else:
+        PPROC = config["preprocessor"]
+
+SHARDS = config["shards"]
+BATCHES = config["batches"]
+
+BOILERPLATE_CLEANING = config["boilerplateCleaning"]
+PARAGRAPH_IDENTIFICATION = config["paragraphIdentification"]
+
+CLEANHTML = ""
+FTFY = ""
+LANGID = "cld2"
+PARSER = ""
+PDFEXTRACT = ""
+HTML5LIB = ""
+
+if "cleanHTML" in config and config["cleanHTML"]:
+    CLEANHTML = "--cleanhtml"
+if "ftfy" in config and config["ftfy"]:
+    FTFY = "--ftfy"
+if "langID" in config:
+    LANGID = config["langID"]
+if "parser" in config:
+    PARSER = f"--parser {config['parser']}"
+if "PDFextract" in config and config["PDFextract"]:
+    PDFEXTRACT_CF = ""
+    PDFEXTRACT_SJ = ""
+    PDFEXTRACT_KL = ""
+    if "PDFextract_configfile" in config and config["PDFextract_configfile"]:
+        PDFEXTRACT_CF = f" --pe_configfile {config['PDFextract_configfile']}"
+    if "PDFextract_sentence_join_path" in config and config["PDFextract_sentence_join_path"]:
+        PDFEXTRACT_SJ = f" --sentence_join_path {config['PDFextract_sentence_join_path']}"
+    if "PDFextract_kenlm_path" in config and config["PDFextract_kenlm_path"]:
+        PDFEXTRACT_KL = f" --kenlm_path {config['PDFextract_kenlm_path']}"
+    PDFEXTRACT = f"--pdfextract {PDFEXTRACT_CF} {PDFEXTRACT_SJ} {PDFEXTRACT_KL}"
+if "html5lib" in config and config["html5lib"]:
+    HTML5LIB = "--html5lib"
+
+# sentence splitting and tokenisation
+SENTTOKS = {} if not "sentenceSplitters" in config else config["sentenceSplitters"]
+CUSTOMNBPS = {} if not "customNBPs" in config else config["customNBPs"]
+WORDTOKS = {} if not "wordTokenizers" in config else config["wordTokenizers"]
+MORPHTOKS = {} if not "morphologicalAnalysers" in config else config["morphologicalAnalysers"]
+
+PRUNE_THRESHOLD = f"--prune {config['pruneThreshold']}"
+PRUNE_TYPE = f"--prune-type {config['pruneType']}"
+
+# Sharding
+EMPTY_SHARD_CHECK = f"{TMPDIR}/empty_shard"
+EMPTY_SHARD_BATCH_DIR = "EMPTY/1"
+
+try:
+    os.makedirs(TMPDIR)
+except:
+    pass
+
+#################################################################
+# CLEANING
+FIELDS = ["url", "seg"]
+PARAGRAPH_IDENTIFICATION_FIELDS = []
+DEFERRED = ""
+MMHSUM_PATH = ""
+DEFERRED_FIELDS = []
+MONOFIXER = False
+MONOFIXER_FIELDS = []
+MONOFIXER_DEFERRED_COLS = ""
+AGGRESSIVE_DEDUP = "--aggressive_dedup"
+MONOCLEANER = False
+MONOCLEANER_MODELS = {}
+MONOCLEANER_FIELDS = []
+MONOCLEANER_THRESHOLD = 0.0
+OUTPUT_FILES = ["sent", "raw"]
+STATS_FILES = ["sent", "raw"]
+
+if PARAGRAPH_IDENTIFICATION:
+    PARAGRAPH_IDENTIFICATION_FIELDS = ["para1"]
+if "deferred" in config and config["deferred"]:
+    DEFERRED = "--print-sent-hash"
+    MMHSUM_PATH = f"mmhsum"
+    DEFERRED_FIELDS = ["checksum"]
+    MONOFIXER_DEFERRED_COLS = "--sdeferredcol 3"
+
+    if PARAGRAPH_IDENTIFICATION:
+        MONOFIXER_DEFERRED_COLS = "--sdeferredcol 4"
+if "monofixer" in config and config["monofixer"]:
+    MONOFIXER = True
+    MONOFIXER_FIELDS = ["monofixerhash", "monofixerscore"]
+if "aggressiveDedup" in config and not config["aggressiveDedup"]:
+    AGGRESSIVE_DEDUP = ""
+if "monocleaner" in config and config["monocleaner"]:
+    MONOCLEANER = True
+    MONOCLEANER_MODELS = config["monocleanerModels"]
+    MONOCLEANER_FIELDS = ["monocleaner"]
+if "monocleanerThreshold" in config:
+    MONOCLEANER_THRESHOLD = config["monocleanerThreshold"]
+
+FIELDS = FIELDS + PARAGRAPH_IDENTIFICATION_FIELDS + DEFERRED_FIELDS + MONOFIXER_FIELDS + MONOCLEANER_FIELDS
+
+FILTER_SORT_FIELDS = "-k3"
+if "monofixerhash" in FIELDS:
+    i = FIELDS.index("monofixerhash")
+    i = i + 1  # sort counts from 1, not 0
+    FILTER_SORT_FIELDS = f"-k{i},{i} -k{i+1},{i+1}nr"
+
+FIELDS = ",".join(FIELDS)
+#################################################################
+# DATASOURCES
+HOSTS = set()
+WARCS = set()
+PREVERTICALS = set()
+
+if "warcs" in config:
+    WARCS = WARCS.union(config["warcs"])
+
+if "hosts" in config:
+    HOSTS = HOSTS.union(config["hosts"])
+
+if "preverticals" in config:
+    PREVERTICALS = PREVERTICALS.union(config["preverticals"])
+
+if "hostsFile" in config:
+    with open_xz_or_gzip_or_plain(config["hostsFile"]) as f:
+        for line in f:
+            HOSTS.add(line.strip())
+
+if "warcsFile" in config:
+    with open_xz_or_gzip_or_plain(config["warcsFile"]) as f:
+        for line in f:
+            WARCS.add(line.strip())
+
+if "preverticalsFile" in config:
+    with open_xz_or_gzip_or_plain(config["preverticalsFile"]) as f:
+        for line in f:
+            PREVERTICALS.add(line.strip())
+
+# group hosts by domain and check their validity
+DOMAIN_2_HOSTS = create_domain_key_2_host_map(HOSTS)
+
+# assign an ID to each WARC and check that all WARCs exist
+TARGET_2_PROVIDED_WARCS = create_id_key_2_file_map(WARCS, file_desc="WARCs")
+
+# assign an ID to each prevertical and check that all preverticals exist
+TARGET_2_PROVIDED_PREVERTICALS = create_id_key_2_file_map(PREVERTICALS, id_offset=len(TARGET_2_PROVIDED_WARCS), file_desc="preverticals")
+
+# group crawled WARCs by domains
+TARGET_2_CRAWLED_WARCS = dict([
+    (domain, [f"{DATADIR}/warc/{host}/{CRAWLTARGET}.warc.gz" for host in hosts])
+    for (domain, hosts) in DOMAIN_2_HOSTS.items()
+])
+
+# group all files (e.g. WARCs, prevertical) by target (either domain if crawled, or ID if provided by user)
+TARGET_2_WARCS = {**TARGET_2_CRAWLED_WARCS, **TARGET_2_PROVIDED_WARCS}
+TARGET_2_PREVERTICALS = {**TARGET_2_PROVIDED_PREVERTICALS}
+#TARGETS = [*TARGET_2_WARCS.keys(), *TARGET_2_PREVERTICALS.keys()]
+
+#################################################################
+### WORKFLOW EXECUTION ##########################################
+THREADS = {
+    "split": 1,
+    "monofixer": 1,
+    "monocleaner": 1,
+    "sents": 1,
+}
+if "parallelWorkers" in config:
+    for k in config["parallelWorkers"]:
+        THREADS[k] = config["parallelWorkers"][k]
+
+OUTPUT = []
+UNTIL = config["until"] if "until" in config else ""
+if "until" not in config:
+    OUTPUT = expand(
+        "{permanent}/{lang}.{output_file}.gz",
+        permanent=PERMANENT,
+        lang=LANGS,
+        output_file=OUTPUT_FILES,
+    )
+    OUTPUT.extend(
+        expand(
+            "{permanent}/{lang}.stats.{stats_file}",
+            permanent=PERMANENT,
+            lang=LANGS,
+            stats_file=STATS_FILES,
+        )
+    )
+elif UNTIL == "crawl":
+    if CRAWLTARGET == "linguacrawl":
+        OUTPUT.append(f"{DATADIR}/warc/linguacrawl.finished")
+    else:
+        for domain, hosts in DOMAIN_2_HOSTS.items():
+            for host in hosts:
+                OUTPUT.append(f"{DATADIR}/warc/{host}/{CRAWLTARGET}.warc.gz")
+elif UNTIL == "preprocess":
+    OUTPUT = expand(
+        "{datadir}/preprocess/{target}/{pproc}/{lang}/{pproc_file}",
+        datadir=DATADIR,
+        target=TARGET_2_WARCS,
+        pproc=PPROC,
+        lang=LANGS,
+        pproc_file=PPROC_FILES,
+    )
+    OUTPUT.extend(expand(
+        "{datadir}/preprocess/{target}/prevertical2text/{lang}/{pproc_file}",
+        datadir=DATADIR,
+        target=TARGET_2_PREVERTICALS,
+        lang=LANGS,
+        pproc_file=PPROC_FILES,
+    ))
+elif UNTIL == "shard":
+    OUTPUT = expand("{datadir}/shards/02.batches.{lang}", datadir=DATADIR, lang=LANGS)
+elif UNTIL == "split":
+    OUTPUT = expand("{datadir}/shards/03.split.{lang}", datadir=DATADIR, lang=LANGS)
+elif UNTIL == "monofixer":
+    OUTPUT = expand("{datadir}/shards/04_01.monofixer.{lang}", datadir=DATADIR, lang=LANGS)
+elif UNTIL == "monocleaner":
+    OUTPUT = expand("{datadir}/shards/04_02.monocleaner.{lang}", datadir=DATADIR, lang=LANGS)
+elif UNTIL == "filter":
+    OUTPUT = expand("{datadir}/shards/04_03.filter.{lang}", datadir=DATADIR, lang=LANGS)
+
+shell.prefix("set -euo pipefail;")
+
+
+#################################################################
+### FINAL OUTPUTS ###############################################
+rule all:
+    input:
+        OUTPUT,
+
+
+#################################################################
+### CRAWLING ####################################################
+
+rule wget_download:
+    """
+    Download {target} with wget
+    """
+    params:
+        url="http://{target}",
+        folder=lambda wildcards, output: os.path.dirname(output[0]),
+        time_limit=apply_format(CRAWLTIMELIMIT, "-t {}s"),
+        user_agent=apply_format(USERAGENT, "-a '{}'"),
+        wait=apply_format(CRAWLWAIT, "--wait {}"),
+        file_types=apply_format(",".join(CRAWLFILETYPES), "-f {}")
+    output:
+        f"{DATADIR}/warc/{{target}}/wget.warc.gz",
+    shell:
+        """
+        mkdir -p {params.folder} {TMPDIR}
+        DIRNAME=$(mktemp -d "{TMPDIR}/downloaded.{wildcards.target}.XXXXXX")
+        {PROFILING} python3 {WORKFLOW}/bitextor_wget.py --url {params.url} --output-path $DIRNAME {params.time_limit} {params.user_agent} {params.file_types} {params.wait} --warc {output}
+        rm -rf $DIRNAME
+        """
+
+
+rule heritrix_download:
+    """
+    Download {target} with heritrix
+    """
+    params:
+        url="http://{target}",
+        folder=lambda wildcards, output: os.path.dirname(output[0]),
+        time_limit=CRAWLTIMELIMIT
+    output:
+        f"{DATADIR}/warc/{{target}}/heritrix.warc.gz",
+    shell:
+        """
+        URL=$(python3 -c "from monotextor.utils.common import check_connection; \
+            e, url = check_connection('{params.url}'); \
+            print(url) ; \
+            exit(e)")
+        if [ $? -ne 0 ]; then
+            touch {DATADIR}/warc/{wildcards.target}/heritrix.warc
+            gzip {DATADIR}/warc/{wildcards.target}/heritrix.warc
+        else
+            mkdir -p {params.folder} {TMPDIR}
+            if [ "$(ps aux | grep -i Heritrix | grep -v grep)" == "" ]
+                then {HERITRIXPATH}/bin/heritrix -a {HERITRIXUSER}
+            fi
+            curl -v -d "action=teardown" -k -u {HERITRIXUSER} --anyauth --location {HERITRIXURL}/engine/job/{wildcards.target}
+            curl -v -d "createpath={wildcards.target}&action=create" -k -u {HERITRIXUSER} --anyauth --location {HERITRIXURL}/engine
+            DIRNAME=$(mktemp -d "{TMPDIR}/downloaded.{wildcards.target}.XXXXXX")
+            cat {WORKFLOW}/data/crawler-beans.cxml | sed "s@http://example.example/example@${{URL}}@g" > $DIRNAME/my-crawler-beans.cxml
+            curl -v -T $DIRNAME/my-crawler-beans.cxml -k -u {HERITRIXUSER} --anyauth --location {HERITRIXURL}/engine/job/{wildcards.target}/jobdir/crawler-beans.cxml
+            curl -v -d "action=build" -k -u {HERITRIXUSER} --anyauth --location {HERITRIXURL}/engine/job/{wildcards.target}
+            curl -v -d "action=launch&checkpoint=latest" -k -u {HERITRIXUSER} --anyauth --location {HERITRIXURL}/engine/job/{wildcards.target}
+            sleep 2
+            curl -v -d "action=unpause" -k -u {HERITRIXUSER} --anyauth --location {HERITRIXURL}/engine/job/{wildcards.target}
+            RUNTIME=0
+            sleep 15
+            while [ -f {HERITRIXPATH}/jobs/{wildcards.target}/latest/warcs/*warc.gz.open ]
+            do
+                sleep 5
+                RUNTIME=$((RUNTIME+5))
+                if [ "{params.time_limit}" != "" ]
+                then
+                    if [ $RUNTIME -gt "{params.time_limit}" ]
+                    then
+                        echo "Crawling time limit reached"
+                        curl -v -d "action=pause" -k -u {HERITRIXUSER} --anyauth --location {HERITRIXURL}/engine/job/{wildcards.target}
+                        curl -v -d "action=checkpoint" -k -u {HERITRIXUSER} --anyauth --location {HERITRIXURL}/engine/job/{wildcards.target}
+                        curl -v -d "action=terminate" -k -u {HERITRIXUSER} --anyauth --location {HERITRIXURL}/engine/job/{wildcards.target}
+                    fi
+                fi
+            done
+            echo "Job {wildcards.target} finished!"
+            cat {HERITRIXPATH}/jobs/{wildcards.target}/*/warcs/*warc.gz > {output}
+        fi
+        """
+
+
+rule linguacrawl_config:
+    """
+    Create a linguacrawl yaml config file from Bitextor's parameters
+    """
+    output:
+        yaml_file=temp(f"{TMPDIR}/linguacrawl.yaml"),
+    params:
+        user_agent=apply_format(USERAGENT, "user_agent: '{}'\n"),
+        output_dir=apply_format(f"{DATADIR}/warc/linguacrawl", "output_dir: '{}'\n"),
+        wait=apply_format(CRAWLWAIT, "crawl_delay: {}\n"),
+        time_limit=apply_format(CRAWLTIMELIMIT, "max_time_per_site: {}\n"),
+        size_limit=apply_format(CRAWLSIZELIMIT, "max_size_per_site: {}\n"),
+        timeout=apply_format(CRAWLTIMEOUT, "connection_timeout: {}\n"),
+        num_threads=apply_format(CRAWLJOBS, "max_jobs: {}\n"),
+        prefix_filter=apply_format(str(CRAWLPREFIXFILTER), "prefix_filter: {}\n"),
+        resume_crawling=apply_format(str(CONTINUECRAWL), "resume_crawling: {}\n"),
+        dump_args=apply_format(str(CRAWLDUMPARGS), "verbose: {}\n"),
+        file_types=apply_format(f"({'|'.join(CRAWLFILETYPES)})", "accepted_content: '{}'\n"),
+        max_folder_depth=apply_format(CRAWLMAXFOLDERTREEDEPTH, "max_folder_tree_depth: {}\n"),
+        scout_steps=apply_format(CRAWLSCOUTSTEPS, "scout_steps: {}\n"),
+        blacklist=apply_format(str(CRAWLBLACKLISTURL), "url_blacklist: {}\n"),
+    run:
+        global HOSTS
+        yaml_content = ""
+
+        langs = "','".join(LANGS)
+        hosts = "','".join(HOSTS)
+
+        # Mandatory
+        yaml_content += params.user_agent
+        yaml_content += f"langs_of_interest: ['{langs}']\n"
+        yaml_content += params.output_dir
+        # Optional (the argument parser will not complain, but the crawler will crash in some cases)
+        yaml_content += params.wait
+        yaml_content += params.time_limit
+        yaml_content += params.size_limit
+        yaml_content += params.timeout
+        yaml_content += params.num_threads
+        yaml_content += params.resume_crawling
+        yaml_content += f"seed_urls: ['{hosts}']\n"
+        # yaml_content += f"seed_urls_from_file: \n" # HOSTS contain all hosts if hosts defined either with or without file
+        yaml_content += params.prefix_filter
+        yaml_content += params.dump_args
+        yaml_content += params.file_types
+        yaml_content += params.max_folder_depth
+        yaml_content += f"max_attempts: 3\n"
+        yaml_content += params.scout_steps
+        yaml_content += f"min_langs_in_site: 2\n"
+        yaml_content += params.blacklist
+
+
+        # tld = LANGS.union([params.url.split('.')[-1]]).union(TLD_CRAWL)
+        tld = LANGS.union([url.split(".")[-1] for url in HOSTS]).union(TLD_CRAWL)
+        tld = "','".join(tld)
+
+        yaml_content += f"accepted_tlds: ['{tld}']\n"
+
+        fdescriptor = open(output.yaml_file, "w")
+        fdescriptor.write(yaml_content)
+        fdescriptor.flush()
+        fdescriptor.close()
+
+
+# This must be a checkpoint because we do not know the resulted warcs since we let the user decide if they want to
+#  either join all the warcs (it loses important information like the source of the warcs) or not
+# Manual stopping: kill -s sigint `ps aux | grep bin/linguacrawl | grep -v grep | awk '{print $2}'`
+checkpoint linguacrawl_download:
+    """
+    Download HOSTS with linguacrawl
+    """
+    input:
+        f"{TMPDIR}/linguacrawl.yaml"
+    params:
+        folder=f"{DATADIR}/warc/linguacrawl",
+        crawl_cat=config["crawlCat"] if "crawlCat" in config else False,
+        crawl_cat_max=config["crawlCatMaxSize"]*1024*1024 if "crawlCatMaxSize" in config else 0
+    output:
+        f"{DATADIR}/warc/linguacrawl.finished",
+    run:
+        shell(
+            """
+            mkdir -p {params.folder} {TMPDIR}
+            {PROFILING} linguacrawl {input}
+            """
+        )
+
+        all_files = subprocess.Popen(("ls", params.folder), stdout=subprocess.PIPE)
+        try:
+            # Process the resulted warcs
+            warcs = subprocess.check_output(
+                ("grep", "[.]warc[.]gz$"), stdin=all_files.stdout
+            )  # It will throw an exception if no warcs were downloaded
+            all_files.wait()
+
+            warcs = warcs.decode("utf-8").split("\n")
+            warcs = list(filter(lambda warc: len(warc) != 0, warcs))
+            warcs = list(map(lambda warc: f"{params.folder}/{warc}", warcs))
+
+            if not params.crawl_cat:
+                warcs = "\n".join(warcs)
+                shell(f'echo -e "{warcs}" > {{output[0]}}')
+            else:
+                if params.crawl_cat_max <= 0:
+                    warcs = " ".join(warcs)
+                    shell(
+                        f"""
+                        cat {warcs} > {params.folder}/linguacrawl.warc.gz
+                        echo "{params.folder}/linguacrawl.warc.gz" > {{output[0]}}
+                        """
+                    )
+                else:
+                    # Improve the number of preprocess rules that are executed
+                    current = 0
+                    blocks = 0
+                    files = [f"{params.folder}/linguacrawl{blocks}.warc.gz"]
+
+                    for warc in warcs:
+                        if current > {params.crawl_cat_max}:
+                            current = 0
+                            blocks += 1
+                            files.append(f"{params.folder}/linguacrawl{blocks}.warc.gz")
+
+                        shell(f"cat {warc} >> {files[-1]}")
+
+                        du_command = subprocess.Popen(("du", "-b", warc), stdout=subprocess.PIPE)
+
+                        try:
+                            du_warc = subprocess.check_output(("awk", "{print $1}"), stdin=du_command.stdout)
+                            du_command.wait()
+
+                            current += int(du_warc)
+                        except:
+                            sys.stderr.write(f"WARNING: could not retrieve the size of {warc}")
+
+                    files = "\n".join(files)
+                    shell(f'echo -e "{files}" > {{output[0]}}')
+        except:
+            # No warcs were downloaded: error or warning
+            if len(WARCS) == 0:
+                sys.stderr.write("ERROR: could not find any file after crawling\n")
+                sys.exit(1)
+            sys.stderr.write("WARNING: could not find any file after crawling\n")
+            shell(f"touch {output}")
+
+
+#################################################################
+### PREPROCESS ##################################################
+rule warc2preprocess:
+    """
+    Process a list of WARCs (or a single WARC)
+        and produce {plain_text,mime,url,normalized_html,deboilerplate_html}.gz
+    """
+    input:
+        get_pproc_input,
+    output:
+        expand("{data}/preprocess/{{target}}/w2p/{lang}/{pproc_file}", data=DATADIR, lang=LANGS, pproc_file=PPROC_FILES),
+    threads: 2
+    params:
+        folder=lambda wildcards, output: os.path.dirname(os.path.dirname(output[0])),  # remove "{lang}/{pproc_file}"
+        pproclangs=",".join(LANGS),
+        boilerplate='--boilerpipe' if BOILERPLATE_CLEANING else '',
+        paragraphs='--paragraph-identification' if PARAGRAPH_IDENTIFICATION else '',
+    shell:
+        """
+        mkdir -p {params.folder}
+        cat {input} \
+            | {PROFILING} python3 {WORKFLOW}/bitextor_warc2htmlwarc.py {CLEANHTML} {FTFY} {PDFEXTRACT} --disable-output-gzip \
+            | {PROFILING} python3 {WORKFLOW}/bitextor_warc2preprocess.py --input - --langs {params.pproclangs} \
+                --compression gz --langid {LANGID} {params.boilerplate} {HTML5LIB} {PARSER} {params.paragraphs} \
+                --output-dir {params.folder}
+        for lang in {LANGS}; do
+            if [ ! -f {params.folder}/$lang/plain_text.gz ]; then
+                >&2 echo "WARNING: no \'$lang\' data found in {wildcards.target}: creating empty files instead"
+                mkdir -p {params.folder}/$lang
+                touch {params.folder}/$lang/{{plain_text,mime,url,normalized_html,deboilerplate_html}}
+                gzip {params.folder}/$lang/{{plain_text,mime,url,normalized_html,deboilerplate_html}}
+
+                # Generate empty file in order to be able to check if is needed to generate empty shards later
+                touch "{EMPTY_SHARD_CHECK}_$lang"
+            fi
+        done
+        """
+
+
+rule warc2text:
+    """
+    Process a list of WARCs (or a single WARC)
+        and produce {text,mime,url}.gz and optionally html.gz
+    """
+    input:
+        get_pproc_input,
+    output:
+        expand(
+            "{data}/preprocess/{{target}}/warc2text/{lang}/{pproc_file}",
+            data=DATADIR,
+            lang=LANGS,
+            pproc_file=PPROC_FILES,
+        ),
+    params:
+        folder=lambda wildcards, output: os.path.dirname(os.path.dirname(output[0])),  # remove "{lang}/{pproc_file}"
+        f=",".join([f.strip(".gz") for f in PPROC_FILES]),
+        paragraphs='--paragraph-identification' if PARAGRAPH_IDENTIFICATION else '',
+    shell:
+        """
+        mkdir -p {params.folder}
+        {PROFILING} warc2text -o {params.folder} -s -f {params.f} {params.paragraphs} {input}
+        for lang in {LANGS}; do
+            if [ ! -f {params.folder}/$lang/text.gz ]; then
+                >&2 echo "WARNING: no \'$lang\' data found in {wildcards.target}: creating empty files instead"
+                mkdir -p {params.folder}/$lang
+                touch {params.folder}/$lang/{{{params.f}}}
+                gzip {params.folder}/$lang/{{{params.f}}}
+
+                # Generate empty file in order to be able to check if is needed to generate empty shards later
+                touch "{EMPTY_SHARD_CHECK}_$lang"
+            fi
+        done
+        """
+
+
+rule prevertical2text:
+    """
+    Process a list of prevertical format files (or a single prevertical format file)
+        and produce {text,mime,url}.gz and optionally html.gz
+    """
+    input:
+        lambda wildcards: TARGET_2_PREVERTICALS[wildcards.target],
+    output:
+        expand(
+            "{data}/preprocess/{{target}}/prevertical2text/{lang}/{pproc_file}",
+            data=DATADIR,
+            lang=LANGS,
+            pproc_file=PPROC_FILES,
+        ),
+    params:
+        folder=lambda wildcards, output: os.path.dirname(os.path.dirname(output[0])),  # remove "{lang}/{pproc_file}"
+        f=",".join([f.strip(".gz") for f in PPROC_FILES]),
+        boilerplate='-b' if BOILERPLATE_CLEANING else '',
+        paragraphs='-p' if PARAGRAPH_IDENTIFICATION else '',
+    shell:
+        """
+        mkdir -p {params.folder}
+        cat {input} | \
+            python3 {WORKFLOW}/bitextor_prevertical_lang_iso639_1.py | \
+            {PROFILING} prevertical2text -o {params.folder} -s -f {params.f} {params.boilerplate} {params.paragraphs} -
+        for lang in {LANGS}; do
+            if [ ! -f {params.folder}/$lang/text.gz ]; then
+                >&2 echo "WARNING: no \'$lang\' data found in {wildcards.target}: creating empty files instead"
+                mkdir -p {params.folder}/$lang
+                touch {params.folder}/$lang/{{{params.f}}}
+                gzip {params.folder}/$lang/{{{params.f}}}
+
+                # Generate empty file in order to be able to check if is needed to generate empty shards later
+                touch "{EMPTY_SHARD_CHECK}_$lang"
+            fi
+        done
+        """
+
+
+# DAG will be re-evaluated after completing shard rule (because number of batches is dynamic and unknown)
+checkpoint shard:
+    """
+    Use giashard to shard the output of warc2text/warc2preprocess to balance jobs
+    :input: output of the preprocessing rules
+    :output: a plain text files that contains the list of every batch generated
+        (i.e. each line has a path to a batch folder)
+    """
+    input:
+        # this is separated in two functions to make sure that
+        # the preprocessing of the provided files and the crawling
+        # may be executed in parallel
+        # (otherwise the linguacrawl checkpoint might prevent that)
+        get_shard_input_files,
+        get_shard_input_crawled,
+    output:
+        f"{DATADIR}/shards/02.batches.{{lang}}",  # list of batches created for lang
+    params:
+        n=SHARDS,
+        b=BATCHES,
+        o_no_lang=lambda wildcards, output: os.path.dirname(output[0]),
+        o=f"{DATADIR}/shards/{{lang}}",
+        f=",".join([f.strip(".gz") for f in PPROC_FILES]),
+    shell:
+        """
+        ulimit -n 2048
+        mkdir -p {params.o}
+        rm -rf {params.o}/* # remove anything that might be left after a previous run
+
+        binary=giashard
+        if [[ "$(command -v $binary)" == "" ]]; then
+            binary=~/go/bin/giashard
+        fi
+
+        warcs=$(echo {DATADIR}/preprocess/*/{PPROC}/{wildcards.lang})
+        preverticals=$(echo {DATADIR}/preprocess/*/prevertical2text/{wildcards.lang})
+
+        if [[ "$(echo $warcs | grep \*)" != "" ]]; then
+            warcs=""
+        fi
+        if [[ "$(echo $preverticals | grep \*)" != "" ]]; then
+            preverticals=""
+        fi
+
+        {PROFILING} $binary -n {params.n} -b {params.b} -o {params.o} -f {params.f} $preverticals $warcs
+
+        nofiles=$(ls {params.o} | wc -l)
+
+        if [[ "$nofiles" == "0" ]] && [[ -f "{EMPTY_SHARD_CHECK}_{wildcards.lang}" ]]; then
+            # No files generated
+            >&2 echo "WARNING: no files generated after running giashard for lang '{wildcards.lang}': creating empty files instead"
+
+            # Generate empty shards if needed in order to avoid the pipeline to break
+            mkdir -p {params.o}/{EMPTY_SHARD_BATCH_DIR}
+
+            touch {params.o}/{EMPTY_SHARD_BATCH_DIR}/empty
+            touch {params.o}/{EMPTY_SHARD_BATCH_DIR}/{{{params.f}}}
+            gzip {params.o}/{EMPTY_SHARD_BATCH_DIR}/{{{params.f}}}
+        fi
+
+        ls -d {params.o}/*/* > {output}
+        """
+
+
+rule split:
+    """
+    Use sentence splitter to obtain sentences from the plain text file
+    :input: gz-compressed file with a base64-encoded document per line
+        document is the plain text extracted by the preprocess
+    :output: gz-compressed file with a base64-encoded document per line
+        output must have the same number of lines as the input (i.e. same number of docs)
+    """
+    input:
+        f"{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/{TEXT_FILE}",
+    params:
+        splitter=lambda wildcards: apply_format(get_lang_or_default(SENTTOKS, wildcards.lang), '--sentence-splitter "{}"'),
+        customnbp=lambda wildcards: apply_format(get_customnbp(CUSTOMNBPS, wildcards.lang), '--customnbp "{}"'),
+        paragraphs='--process-paragraphs' if PARAGRAPH_IDENTIFICATION else '',
+    output:
+        f"{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/sentences.gz",
+    threads: THREADS["split"]
+    shell:
+        """
+        parallel_cmd=""
+        if [ {threads} -gt 1 ]; then
+            parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
+        fi
+        zcat {input} \
+            | {PROFILING} ${{parallel_cmd}} python3 {WORKFLOW}/bitextor_split.py \
+                {params.splitter} {params.customnbp} \
+                --langcode "{wildcards.lang}" \
+                {PRUNE_THRESHOLD} {PRUNE_TYPE} {params.paragraphs} \
+            | pigz -c > {output}
+        """
+
+
+rule aggregate_split:
+    """
+    Helper rule to implement until=split config
+    :input: the result of every split rule
+    :output: a file that contains the path to the output of every split rule per lang
+    """
+    input:
+        plain=lambda wildcards: [f"{batch}/sentences.gz" for batch in get_batches(wildcards.lang)],
+        url=lambda wildcards: [f"{batch}/url.gz" for batch in get_batches(wildcards.lang)],
+    output:
+        f"{DATADIR}/shards/03.split.{{lang}}.gz",
+    run:
+        for sentfile, urlfile in zip(input.plain, input.url):
+            with gzip.open(sentfile, 'r') as p:
+                with gzip.open(urlfile, 'rt') as u:
+                    with gzip.open(output[0], 'wt') as o:
+                        for doc in p:
+                            docurl = u.readline().strip()
+                            lines = base64.b64decode(doc.strip()).decode('utf8').split('\n')
+                            for line in lines:
+                                o.write(docurl + "\t" + line + "\n")
+
+
+### FILTERING AND CLEANING ######################################
+
+rule monofixer:
+    """
+    Apply monofixer to the split sentences output
+    :input: a single chunk of sentence splitting step output
+        gz-compressed, columns are: url sent deferred
+        (deferred is optional)
+    :output: plain text, marked as temp, same columns as input with two new columns: hash and score
+    """
+    input:
+        split=f"{DATADIR}/shards/03.split.{{lang}}.gz",
+    output:
+        temp(f"{DATADIR}/shards/04_01.monofixer.{{lang}}.gz"),
+    threads: THREADS["monofixer"]
+    shell:
+        """
+        CAT=cat; if [[ {input.split} == *.gz ]]; then CAT=zcat; fi
+        parallel_cmd=""
+        if [ {threads} -gt 1 ]; then
+            parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
+        fi
+        $CAT {input.split} \
+            | {PROFILING} ${{parallel_cmd}} monofixer -q - - "{wildcards.lang}" {AGGRESSIVE_DEDUP} {MONOFIXER_DEFERRED_COLS} \
+            | pigz -c > {output}
+        """
+
+
+monocleaner_input = rules.monofixer.output
+if not MONOFIXER:
+    monocleaner_input = rules.monofixer.input.split
+
+
+rule monocleaner:
+    """
+    Compute monocleaner scores of the aligned sentence pairs
+    :input.monofixer: either the output of monofixer rule, or a single chunk of split sentences output if monofixer is disabled
+    :input.model: monocleaner model, either provided by the user or generated by train_monocleaner
+    :output: gz-compressed, same columns as input with one new column: score
+    """
+    input:
+        monofixer=monocleaner_input,
+        model=lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
+    output:
+        f"{DATADIR}/shards/04_02.monocleaner.{{lang}}.gz",
+    params:
+        THREADS["monocleaner"],
+    threads: max(2, THREADS["monocleaner"])
+    shell:
+        """
+        parallel_cmd=""
+        if [ {params} -gt 1 ]; then
+            parallel_cmd="parallel --gnu --halt 2 --pipe --j {params} -k"
+        fi
+        CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
+        $CAT {input.monofixer} \
+                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only -q {input.model} - - \
+                | paste <($CAT {input.monofixer}) - \
+                | pigz -c > {output}
+        """
+
+
+filter_input = rules.monocleaner.output
+if not MONOCLEANER:
+    filter_input = rules.monocleaner.input.monofixer
+
+
+rule filter:
+    """
+    Filter by monoclenaer threshold (if applicable), sort by sentence pair or monofixer hash
+    :input: either the output of monocleaner (if enabled), or the output of the previous step (i.e. what would be the input of monocleaner if it was enabled)
+    :output: plain-text file, marked as temp, the senteces are sorted by duplicates
+        remove sentences below monoclenaer threshold (if applicable)
+    """
+    input:
+        filter_input,
+    output:
+        temp(f"{DATADIR}/shards/04_03.filtered.{{lang}}.gz"),
+    threads: lambda wildcards: 1
+    run:
+        cat_cmd = "cat"
+        if input[0][-3:] == ".gz":
+            cat_cmd = "zcat"
+        cmd = f""" {cat_cmd} {input} """
+        if MONOCLEANER:
+            cmd += (
+                f""" | {PROFILING} python3 {WORKFLOW}/bitextor_filterbicleaner.py --threshold {MONOCLEANER_THRESHOLD} """
+            )
+        cmd += f""" | LC_ALL=C sort -t $'\t' {FILTER_SORT_FIELDS} """  # sorted by either sentences or monofixer
+        cmd += f""" | pigz -c > {output} """
+        shell(cmd)
+
+
+raw_input_filename = rules.filter.input
+
+rule raw:
+    """
+    Create .raw.gz file by concatenating the output chunks of the last step before filtering
+        may be split sentences, monofixer or monocleaner, depending on what's enabled in the config
+    :input: the output of the last step
+    :output.corpus: the concatenated inputs, columns are the same as the input
+    :output:stats: the corresponding stats file in plain text
+    """
+    input:
+        raw_input_filename,
+    output:
+        corpus=f"{PERMANENT}/{{lang}}.raw.gz",
+        stats=f"{PERMANENT}/{{lang}}.stats.raw",
+    shell:
+        """
+        cat {input} > {output.corpus}
+        echo "Raw" > {output.stats}
+        echo "File size: $(du -h {output.corpus} | cut -f 1)" >> {output.stats}
+        WC1=$(zcat {output.corpus} | cut -f 2 | wc -wl | tr -s ' ')
+        echo "Sentence pairs: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
+        echo "Words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
+        """
+
+sents_input_filename = rules.filter.output
+
+rule sents:
+    """
+    Create .sent.gz by concatenated and merge-sorting the outputs of filters rule
+    :input: the outputs of filter step
+    :output: the concatenated inputs, sorted, same columns as input
+    """
+    input:
+        sents_input_filename,
+    output:
+        corpus=f"{PERMANENT}/{{lang}}.sent.gz",
+        stats=f"{PERMANENT}/{{lang}}.stats.sent",
+    threads: THREADS["sents"]
+    shell:
+        """
+        zcat -f {input} | LC_ALL=C sort -t $'\t' {FILTER_SORT_FIELDS} --parallel {threads} --compress-program=gzip -T {TMPDIR} --merge \
+            | pigz -c > {output.corpus}
+        echo "Filtered" > {output.stats}
+        echo "File size: $(du -h {output.corpus} | cut -f 1)" >> {output.stats}
+        WC1=$(zcat {output.corpus} | cut -f 2 | wc -wl | tr -s ' ')
+        echo "Sentence pairs: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
+        echo "Words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
+        """
+
