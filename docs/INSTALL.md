@@ -92,7 +92,7 @@ pip3 install --upgrade pip
 pip3 install .
 # additional dependencies:
 pip3 install ./monocleaner && pip install ./kenlm --install-option="--max_order 7"
-pip3 install ./monofixer
+pip3 install ./bifixer
 ```
 
 If you don't want to install all Python requirements in `requirements.txt` because you don't expect to run some of Monotextor modules, you can comment those `*.txt` in `requirements.txt` and rerun Monotextor installation.

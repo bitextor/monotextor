@@ -13,3 +13,6 @@
 [submodule "prevertical2text"]
 	path = prevertical2text
 	url = https://github.com/bitextor/prevertical2text.git
+[submodule "kenlm"]
+	path = kenlm
+	url = https://github.com/kpu/kenlm.git
