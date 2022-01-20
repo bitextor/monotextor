@@ -828,7 +828,7 @@ rule monofixer:
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
         $CAT {input.split} \
-            | {PROFILING} ${{parallel_cmd}} monofixer -q - - "{wildcards.lang}" {AGGRESSIVE_DEDUP} {MONOFIXER_DEFERRED_COLS} \
+            | {PROFILING} ${{parallel_cmd}} monofixer  --ignore_segmentation -q - - "{wildcards.lang}" {AGGRESSIVE_DEDUP} {MONOFIXER_DEFERRED_COLS} \
             | pigz -c > {output}
         """
 
@@ -861,7 +861,7 @@ rule monocleaner:
         fi
         CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
         $CAT {input.monofixer} \
-                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only -q {input.model} - - \
+                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --scol 2 -q {input.model} - - \
                 | paste <($CAT {input.monofixer}) - \
                 | pigz -c > {output}
         """

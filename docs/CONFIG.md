@@ -254,8 +254,8 @@ The options required to make it work are:
 
 ```yaml
 monocleaner: True
-monocleanerModel: /home/user/monocleaner-model/en-fr/training.en-fr.yaml
-monocleanerThreshold: 0.6
+monocleanerModels: {"fr": "/home/user/monocleaner-model/fr"}
+monocleanerThreshold: 0.5
 ```
 
 * `monocleaner`: use Monocleaner to filter out pairs of segments
