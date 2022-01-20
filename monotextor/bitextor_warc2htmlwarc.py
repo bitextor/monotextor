@@ -177,7 +177,7 @@ fo.write_record(
     fo.create_warcinfo_record(
         filename=filename,
         info={
-            'software': 'bitextor/bitextor-warc2htmlwarc.py',
+            'software': 'monotextor/bitextor-warc2htmlwarc.py',
             'format': 'WARC File Format 1.0'}))
 
 for record in f:

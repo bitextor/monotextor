@@ -25,8 +25,8 @@ import logging
 from sentence_splitter import SentenceSplitter, SentenceSplitterException
 from loomchild.segmenter import LoomchildSegmenter
 
-from bitextor.utils.common import open_xz_or_gzip_or_plain
-from bitextor.utils.common import ExternalTextProcessor
+from monotextor.utils.common import open_xz_or_gzip_or_plain
+from monotextor.utils.common import ExternalTextProcessor
 
 
 # True -> keep sentence

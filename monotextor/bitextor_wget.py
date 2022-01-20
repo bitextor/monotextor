@@ -24,7 +24,7 @@ import time
 from warcio.archiveiterator import ArchiveIterator
 from warcio.warcwriter import WARCWriter
 from warcio.statusandheaders import StatusAndHeaders
-from bitextor.utils.common import check_connection
+from monotextor.utils.common import check_connection
 
 
 def system_check(cmd):
