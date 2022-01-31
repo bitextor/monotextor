@@ -73,8 +73,8 @@ ln -s "${WORK}/data/warc/clipped/greenpeaceaa.warc.gz" "${WORK}/data/warc/greenp
         --config profiling=True permanentDir="${WORK}/permanent/monotextor-output-en-and-fr" \
             dataDir="${WORK}/data/data-en-and-fr" transientDir="${WORK}/transient-en-and-fr" \
             warcs="['${WORK}/data/warc/greenpeace.warc.gz']" preprocessor="warc2text" shards=0 batches=99999 langs="['en', 'fr']" \
-            monocleaner=True monofixer=True \
-	    monocleanerModels="{'en': '${MONOCLEANER}/en/', 'fr': '${MONOCLEANER}/fr/'}"\
+            paragraphIdentification=True monocleaner=True monofixer=True \
+	    monocleanerModels="{'en': '${MONOCLEANER}/en/', 'fr': '${MONOCLEANER}/fr/'}" skipSentenceSplitting=True\
         &> "${WORK}/reports/10-en--and-fr.report"
     annotate_and_echo_info 10 "$?" "$(get_nolines ${WORK}/permanent/monotextor-output-en-and-fr/en.sent.gz)"
 ) &

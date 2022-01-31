@@ -126,7 +126,9 @@ BATCHES = config["batches"]
 
 BOILERPLATE_CLEANING = config["boilerplateCleaning"]
 PARAGRAPH_IDENTIFICATION = config["paragraphIdentification"]
-
+PARAGRAPHS = ""
+if "skipSentenceSplitting" in config and config["skipSentenceSplitting"]:
+    PARAGRAPHS = ".paragraphs"
 CLEANHTML = ""
 FTFY = ""
 LANGID = "cld2"
@@ -289,17 +291,19 @@ OUTPUT = []
 UNTIL = config["until"] if "until" in config else ""
 if "until" not in config:
     OUTPUT = expand(
-        "{permanent}/{lang}.{output_file}.gz",
+        "{permanent}/{lang}.{output_file}{paragraphs}.gz",
         permanent=PERMANENT,
         lang=LANGS,
         output_file=OUTPUT_FILES,
+        paragraphs=PARAGRAPHS,
     )
     OUTPUT.extend(
         expand(
-            "{permanent}/{lang}.stats.{stats_file}",
+            "{permanent}/{lang}.stats.{stats_file}{paragraphs}",
             permanent=PERMANENT,
             lang=LANGS,
             stats_file=STATS_FILES,
+            paragraphs=PARAGRAPHS,
         )
     )
 elif UNTIL == "crawl":
@@ -588,14 +592,14 @@ rule warc2preprocess:
         folder=lambda wildcards, output: os.path.dirname(os.path.dirname(output[0])),  # remove "{lang}/{pproc_file}"
         pproclangs=",".join(LANGS),
         boilerplate='--boilerpipe' if BOILERPLATE_CLEANING else '',
-        paragraphs='--paragraph-identification' if PARAGRAPH_IDENTIFICATION else '',
+        paragraphsid='--paragraph-identification' if PARAGRAPH_IDENTIFICATION else '',
     shell:
         """
         mkdir -p {params.folder}
         cat {input} \
             | {PROFILING} python3 {WORKFLOW}/bitextor_warc2htmlwarc.py {CLEANHTML} {FTFY} {PDFEXTRACT} --disable-output-gzip \
             | {PROFILING} python3 {WORKFLOW}/bitextor_warc2preprocess.py --input - --langs {params.pproclangs} \
-                --compression gz --langid {LANGID} {params.boilerplate} {HTML5LIB} {PARSER} {params.paragraphs} \
+                --compression gz --langid {LANGID} {params.boilerplate} {HTML5LIB} {PARSER} {params.paragraphsid} \
                 --output-dir {params.folder}
         for lang in {LANGS}; do
             if [ ! -f {params.folder}/$lang/plain_text.gz ]; then
@@ -628,11 +632,11 @@ rule warc2text:
     params:
         folder=lambda wildcards, output: os.path.dirname(os.path.dirname(output[0])),  # remove "{lang}/{pproc_file}"
         f=",".join([f.strip(".gz") for f in PPROC_FILES]),
-        paragraphs='--paragraph-identification' if PARAGRAPH_IDENTIFICATION else '',
+        paragraphsid='--paragraph-identification' if PARAGRAPH_IDENTIFICATION else '',
     shell:
         """
         mkdir -p {params.folder}
-        {PROFILING} warc2text -o {params.folder} -s -f {params.f} {params.paragraphs} {input}
+        {PROFILING} warc2text -o {params.folder} -s -f {params.f} {params.paragraphsid} {input}
         for lang in {LANGS}; do
             if [ ! -f {params.folder}/$lang/text.gz ]; then
                 >&2 echo "WARNING: no \'$lang\' data found in {wildcards.target}: creating empty files instead"
@@ -665,13 +669,13 @@ rule prevertical2text:
         folder=lambda wildcards, output: os.path.dirname(os.path.dirname(output[0])),  # remove "{lang}/{pproc_file}"
         f=",".join([f.strip(".gz") for f in PPROC_FILES]),
         boilerplate='-b' if BOILERPLATE_CLEANING else '',
-        paragraphs='-p' if PARAGRAPH_IDENTIFICATION else '',
+        paragraphsid='-p' if PARAGRAPH_IDENTIFICATION else '',
     shell:
         """
         mkdir -p {params.folder}
         cat {input} | \
             python3 {WORKFLOW}/bitextor_prevertical_lang_iso639_1.py | \
-            {PROFILING} prevertical2text -o {params.folder} -s -f {params.f} {params.boilerplate} {params.paragraphs} -
+            {PROFILING} prevertical2text -o {params.folder} -s -f {params.f} {params.boilerplate} {params.paragraphsid} -
         for lang in {LANGS}; do
             if [ ! -f {params.folder}/$lang/text.gz ]; then
                 >&2 echo "WARNING: no \'$lang\' data found in {wildcards.target}: creating empty files instead"
@@ -763,7 +767,7 @@ rule split:
     params:
         splitter=lambda wildcards: apply_format(get_lang_or_default(SENTTOKS, wildcards.lang), '--sentence-splitter "{}"'),
         customnbp=lambda wildcards: apply_format(get_customnbp(CUSTOMNBPS, wildcards.lang), '--customnbp "{}"'),
-        paragraphs='--process-paragraphs' if PARAGRAPH_IDENTIFICATION else '',
+        paragraphsid='--process-paragraphs' if PARAGRAPH_IDENTIFICATION else '',
     output:
         f"{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/sentences.gz",
     threads: THREADS["split"]
@@ -777,10 +781,15 @@ rule split:
             | {PROFILING} ${{parallel_cmd}} python3 {WORKFLOW}/bitextor_split.py \
                 {params.splitter} {params.customnbp} \
                 --langcode "{wildcards.lang}" \
-                {PRUNE_THRESHOLD} {PRUNE_TYPE} {params.paragraphs} \
+                {PRUNE_THRESHOLD} {PRUNE_TYPE} {params.paragraphsid} \
             | pigz -c > {output}
         """
 
+
+input_aggregate_split = "sentences"
+
+if PARAGRAPHS:
+    input_aggregate_split = "text"
 
 rule aggregate_split:
     """
@@ -789,10 +798,10 @@ rule aggregate_split:
     :output: a file that contains the path to the output of every split rule per lang
     """
     input:
-        plain=lambda wildcards: [f"{batch}/sentences.gz" for batch in get_batches(wildcards.lang)],
+        plain=lambda wildcards: [f"{batch}/{input_aggregate_split}.gz" for batch in get_batches(wildcards.lang)],
         url=lambda wildcards: [f"{batch}/url.gz" for batch in get_batches(wildcards.lang)],
     output:
-        f"{DATADIR}/shards/03.split.{{lang}}.gz",
+        f"{DATADIR}/shards/03.split.{{lang}}{PARAGRAPHS}.gz",
     run:
         for sentfile, urlfile in zip(input.plain, input.url):
             with gzip.open(sentfile, 'r') as p:
@@ -816,9 +825,9 @@ rule monofixer:
     :output: plain text, marked as temp, same columns as input with two new columns: hash and score
     """
     input:
-        split=f"{DATADIR}/shards/03.split.{{lang}}.gz",
+        split=f"{DATADIR}/shards/03.split.{{lang}}{PARAGRAPHS}.gz",
     output:
-        temp(f"{DATADIR}/shards/04_01.monofixer.{{lang}}.gz"),
+        temp(f"{DATADIR}/shards/04_01.monofixer.{{lang}}{PARAGRAPHS}.gz"),
     threads: THREADS["monofixer"]
     shell:
         """
@@ -849,7 +858,7 @@ rule monocleaner:
         monofixer=monocleaner_input,
         model=lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
     output:
-        f"{DATADIR}/shards/04_02.monocleaner.{{lang}}.gz",
+        f"{DATADIR}/shards/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
     params:
         THREADS["monocleaner"],
     threads: max(2, THREADS["monocleaner"])
@@ -882,7 +891,7 @@ rule filter:
     input:
         filter_input,
     output:
-        temp(f"{DATADIR}/shards/04_03.filtered.{{lang}}.gz"),
+        temp(f"{DATADIR}/shards/04_03.filtered.{{lang}}{PARAGRAPHS}.gz"),
     threads: lambda wildcards: 1
     run:
         cat_cmd = "cat"
@@ -911,8 +920,8 @@ rule raw:
     input:
         raw_input_filename,
     output:
-        corpus=f"{PERMANENT}/{{lang}}.raw.gz",
-        stats=f"{PERMANENT}/{{lang}}.stats.raw",
+        corpus=f"{PERMANENT}/{{lang}}.raw{PARAGRAPHS}.gz",
+        stats=f"{PERMANENT}/{{lang}}.stats.raw{PARAGRAPHS}",
     shell:
         """
         cat {input} > {output.corpus}
@@ -934,8 +943,8 @@ rule sents:
     input:
         sents_input_filename,
     output:
-        corpus=f"{PERMANENT}/{{lang}}.sent.gz",
-        stats=f"{PERMANENT}/{{lang}}.stats.sent",
+        corpus=f"{PERMANENT}/{{lang}}.sent{PARAGRAPHS}.gz",
+        stats=f"{PERMANENT}/{{lang}}.stats.sent{PARAGRAPHS}",
     threads: THREADS["sents"]
     shell:
         """

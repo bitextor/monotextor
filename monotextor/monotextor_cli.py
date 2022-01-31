@@ -90,7 +90,7 @@ def get_snakefile():
 def main():
     snakefile = get_snakefile()
     options = parse_args()
-
+    print(options.config)
     snakemake.snakemake(
         snakefile=snakefile,
         configfiles=options.configfiles,
