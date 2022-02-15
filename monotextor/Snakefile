@@ -126,9 +126,11 @@ BATCHES = config["batches"]
 
 BOILERPLATE_CLEANING = config["boilerplateCleaning"]
 PARAGRAPH_IDENTIFICATION = config["paragraphIdentification"]
+DISABLE_MONOCLEANER_HARDRULES = ""
 PARAGRAPHS = ""
 if "skipSentenceSplitting" in config and config["skipSentenceSplitting"]:
     PARAGRAPHS = ".paragraphs"
+    DISABLE_MONOCLEANER_HARDRULES = "--disable_hardrules"
 CLEANHTML = ""
 FTFY = ""
 LANGID = "cld2"
@@ -870,7 +872,7 @@ rule monocleaner:
         fi
         CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
         $CAT {input.monofixer} \
-                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --scol 2 -q {input.model} - - \
+                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --scol 2 -q {input.model} {DISABLE_MONOCLEANER_HARDRULES} - - \
                 | paste <($CAT {input.monofixer}) - \
                 | pigz -c > {output}
         """
