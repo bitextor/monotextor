@@ -872,7 +872,7 @@ rule monocleaner:
         fi
         CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
         $CAT {input.monofixer} \
-                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --scol 2 -q {input.model} {DISABLE_MONOCLEANER_HARDRULES} - - \
+                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --scol 2 -q {DISABLE_MONOCLEANER_HARDRULES} {input.model} - - \
                 | paste <($CAT {input.monofixer}) - \
                 | pigz -c > {output}
         """
