@@ -813,7 +813,8 @@ rule aggregate_split:
                             docurl = u.readline().strip()
                             lines = base64.b64decode(doc.strip()).decode('utf8').split('\n')
                             for line in lines:
-                                o.write(docurl + "\t" + line + "\n")
+                                if line:
+                                    o.write(docurl + "\t" + line + "\n")
 
 
 ### FILTERING AND CLEANING ######################################
