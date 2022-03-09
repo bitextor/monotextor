@@ -805,10 +805,10 @@ rule aggregate_split:
     output:
         f"{DATADIR}/shards/03.split.{{lang}}{PARAGRAPHS}.gz",
     run:
-        for sentfile, urlfile in zip(input.plain, input.url):
-            with gzip.open(sentfile, 'r') as p:
-                with gzip.open(urlfile, 'rt') as u:
-                    with gzip.open(output[0], 'wt') as o:
+        with gzip.open(output[0], 'wt') as o:
+            for sentfile, urlfile in zip(input.plain, input.url):
+                with gzip.open(sentfile, 'r') as p:
+                    with gzip.open(urlfile, 'rt') as u:
                         for doc in p:
                             docurl = u.readline().strip()
                             lines = base64.b64decode(doc.strip()).decode('utf8').split('\n')
@@ -872,7 +872,7 @@ rule monocleaner:
         fi
         CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
         $CAT {input.monofixer} \
-                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --scol 2 -q {input.model} {DISABLE_MONOCLEANER_HARDRULES} - - \
+                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --scol 2 -q {DISABLE_MONOCLEANER_HARDRULES} {input.model} - - \
                 | paste <($CAT {input.monofixer}) - \
                 | pigz -c > {output}
         """
