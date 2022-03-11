@@ -811,7 +811,7 @@ rule aggregate_split:
                     with gzip.open(urlfile, 'rt') as u:
                         for doc in p:
                             docurl = u.readline().strip()
-                            lines = base64.b64decode(doc.strip()).decode('utf8').split('\n')
+                            lines = base64.b64decode(doc.strip()).decode('utf8', errors='ignore').split('\n')
                             for line in lines:
                                 if line:
                                     o.write(docurl + "\t" + line + "\n")
@@ -840,7 +840,7 @@ rule monofixer:
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
         $CAT {input.split} \
-            | {PROFILING} ${{parallel_cmd}} monofixer --ignore_normalization --ignore_segmentation -q - - "{wildcards.lang}" {AGGRESSIVE_DEDUP} {MONOFIXER_DEFERRED_COLS} \
+            | {PROFILING} ${{parallel_cmd}} monofixer --ignore_normalization --ignore_segmentation --ignore_empty -q - - "{wildcards.lang}" {AGGRESSIVE_DEDUP} {MONOFIXER_DEFERRED_COLS} \
             | pigz -c > {output}
         """
 
@@ -862,14 +862,12 @@ rule monocleaner:
         model=lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
     output:
         f"{DATADIR}/shards/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
-    params:
-        THREADS["monocleaner"],
-    threads: max(2, THREADS["monocleaner"])
+    threads: THREADS["monocleaner"]
     shell:
         """
         parallel_cmd=""
-        if [ {params} -gt 1 ]; then
-            parallel_cmd="parallel --gnu --halt 2 --pipe --j {params} -k"
+        if [ {threads} -gt 1 ]; then
+            parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
         CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
         $CAT {input.monofixer} \
