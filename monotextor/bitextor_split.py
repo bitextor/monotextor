@@ -160,8 +160,9 @@ with open_xz_or_gzip_or_plain(options.text) if options.text != "-" else sys.stdi
                     logging.warning(f"could not get the paragraph identification data for the doc #{doc_idx}, sentence #{sent_idx}: using 'p-1s-1'")
                     continue
 
-                paragraph_text = ' '.join(paragraph[:-1]).strip() # Replace '\t' with ' '
-                paragraph_id = paragraph[-1]
+                # Use index 6 to discard doc metadata fields
+                paragraph_text = ' '.join(paragraph[:-6]).strip() # Replace '\t' with ' '
+                paragraph_id = paragraph[-6]
                 sentences_wo_paragraphs = splitter_func(paragraph_text, splitter, options.prune_type,
                                                         options.prune_threshold, not options.dont_filter).split("\n")
                 sentences_wo_paragraphs = [sentence.strip() for sentence in sentences_wo_paragraphs]
