@@ -193,8 +193,12 @@ MONOCLEANER = False
 MONOCLEANER_MODELS = {}
 MONOCLEANER_FIELDS = []
 MONOCLEANER_THRESHOLD = 0.0
-OUTPUT_FILES = ["sent", "raw"]
-STATS_FILES = ["sent", "raw"]
+if not PARAGRAPHS:
+    OUTPUT_FILES = ["sent", "raw"]
+    STATS_FILES = ["sent", "raw"]
+else:
+    OUTPUT_FILES = ["raw"]
+    STATS_FILES = ["raw"]
 
 if PARAGRAPH_IDENTIFICATION:
     PARAGRAPH_IDENTIFICATION_FIELDS = ["para1"]
@@ -214,11 +218,11 @@ if "aggressiveDedup" in config and not config["aggressiveDedup"]:
 if "monocleaner" in config and config["monocleaner"]:
     MONOCLEANER = True
     MONOCLEANER_MODELS = config["monocleanerModels"]
-    MONOCLEANER_FIELDS = ["monocleaner"]
+    MONOCLEANER_FIELDS = ["lang_ident", "monocleaner"]
 if "monocleanerThreshold" in config:
     MONOCLEANER_THRESHOLD = config["monocleanerThreshold"]
 
-FIELDS = FIELDS + PARAGRAPH_IDENTIFICATION_FIELDS + DEFERRED_FIELDS + MONOFIXER_FIELDS + MONOCLEANER_FIELDS
+FIELDS = FIELDS + PARAGRAPH_IDENTIFICATION_FIELDS + MONOFIXER_FIELDS + MONOCLEANER_FIELDS
 
 FILTER_SORT_FIELDS = "-k3"
 if "monofixerhash" in FIELDS:
@@ -871,7 +875,7 @@ rule monocleaner:
         fi
         CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
         $CAT {input.monofixer} \
-                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --add_lang_ident --scol 2 -q {DISABLE_MONOCLEANER_HARDRULES} {input.model} - - \
+                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --add_lang_ident --disable_hardrules --scol 2 -q {input.model} - - \
                 | paste <($CAT {input.monofixer}) - \
                 | pigz -c > {output}
         """
@@ -892,18 +896,20 @@ rule filter:
     input:
         filter_input,
     output:
-        temp(f"{DATADIR}/shards/04_03.filtered.{{lang}}{PARAGRAPHS}.gz"),
-    threads: lambda wildcards: 1
+        temp(f"{DATADIR}/shards/04_03.filtered.{{lang}}.gz"),
+    threads: THREADS["filter"]
     run:
         cat_cmd = "cat"
         if input[0][-3:] == ".gz":
-            cat_cmd = "zcat"
+            cat_cmd = "pigz -dcp {threads}"
         cmd = f""" {cat_cmd} {input} """
         if MONOCLEANER:
             cmd += (
                 f""" | {PROFILING} python3 {WORKFLOW}/bitextor_filterbicleaner.py --threshold {MONOCLEANER_THRESHOLD} """
             )
-        cmd += f""" | LC_ALL=C sort -t $'\t' {FILTER_SORT_FIELDS} """  # sorted by either sentences or monofixer
+        cmd += f""" | LC_ALL=C sort -t $'\t' -k4,4 -k5,5nr --parallel {threads} --compress-program=gzip """  # sorted by monofixer hash and score
+        cmd += f""" | LC_ALL=C sort -t $'\t' -k4,4 -u  --parallel {threads} --compress-program=gzip """ # Dedup
+        cmd += f""" | cut -f2 """ # Extract the sentences
         cmd += f""" | pigz -c > {output} """
         shell(cmd)
 
@@ -944,13 +950,11 @@ rule sents:
     input:
         sents_input_filename,
     output:
-        corpus=f"{PERMANENT}/{{lang}}.sent{PARAGRAPHS}.gz",
-        stats=f"{PERMANENT}/{{lang}}.stats.sent{PARAGRAPHS}",
-    threads: THREADS["sents"]
+        corpus=f"{PERMANENT}/{{lang}}.sent.gz",
+        stats=f"{PERMANENT}/{{lang}}.stats.sent",
     shell:
         """
-        zcat -f {input} | LC_ALL=C sort -t $'\t' {FILTER_SORT_FIELDS} --parallel {threads} --compress-program=gzip -T {TMPDIR} --merge \
-            | pigz -c > {output.corpus}
+        cp {input} {output.corpus}
         echo "Filtered" > {output.stats}
         echo "File size: $(du -h {output.corpus} | cut -f 1)" >> {output.stats}
         WC1=$(zcat {output.corpus} | cut -f 2 | wc -wl | tr -s ' ')
