@@ -338,13 +338,13 @@ elif UNTIL == "preprocess":
 elif UNTIL == "shard":
     OUTPUT = expand("{datadir}/shards/02.batches.{lang}", datadir=DATADIR, lang=LANGS)
 elif UNTIL == "split":
-    OUTPUT = expand("{datadir}/shards/03.split.{lang}", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{datadir}/shards/03.split.{lang}.gz", datadir=DATADIR, lang=LANGS)
 elif UNTIL == "monofixer":
-    OUTPUT = expand("{datadir}/shards/04_01.monofixer.{lang}", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{datadir}/shards/04_01.monofixer.{lang}.gz", datadir=DATADIR, lang=LANGS)
 elif UNTIL == "monocleaner":
-    OUTPUT = expand("{datadir}/shards/04_02.monocleaner.{lang}", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{datadir}/shards/04_02.monocleaner.{lang}.gz", datadir=DATADIR, lang=LANGS)
 elif UNTIL == "filter":
-    OUTPUT = expand("{datadir}/shards/04_03.filter.{lang}", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{datadir}/shards/04_03.filter.{lang}.gz", datadir=DATADIR, lang=LANGS)
 
 shell.prefix("set -euo pipefail;")
 
