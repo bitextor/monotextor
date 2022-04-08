@@ -7,6 +7,7 @@
 [submodule "monocleaner"]
 	path = monocleaner
 	url = https://github.com/bitextor/monocleaner.git
+	branch=main
 [submodule "warc2text"]
 	path = warc2text
 	url = https://github.com/bitextor/warc2text.git
