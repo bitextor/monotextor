@@ -287,6 +287,7 @@ THREADS = {
     "split": 1,
     "monofixer": 1,
     "monocleaner": 1,
+    "filter": 1,
     "sents": 1,
 }
 if "parallelWorkers" in config:
@@ -849,11 +850,6 @@ rule monofixer:
         """
 
 
-monocleaner_input = rules.monofixer.output
-if not MONOFIXER:
-    monocleaner_input = rules.monofixer.input.split
-
-
 rule monocleaner:
     """
     Compute monocleaner scores of the aligned sentence pairs
@@ -862,7 +858,7 @@ rule monocleaner:
     :output: gz-compressed, same columns as input with one new column: score
     """
     input:
-        monofixer=monocleaner_input,
+        monofixer=rules.monofixer.output if MONOFIXER else rules.monofixer.input.split,
         model=lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
     output:
         f"{DATADIR}/shards/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
@@ -881,11 +877,6 @@ rule monocleaner:
         """
 
 
-filter_input = rules.monocleaner.output
-if not MONOCLEANER:
-    filter_input = rules.monocleaner.input.monofixer
-
-
 rule filter:
     """
     Filter by monoclenaer threshold (if applicable), sort by sentence pair or monofixer hash
@@ -894,7 +885,7 @@ rule filter:
         remove sentences below monoclenaer threshold (if applicable)
     """
     input:
-        filter_input,
+        rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
     output:
         temp(f"{DATADIR}/shards/04_03.filtered.{{lang}}.gz"),
     threads: THREADS["filter"]
@@ -914,8 +905,6 @@ rule filter:
         shell(cmd)
 
 
-raw_input_filename = rules.filter.input
-
 rule raw:
     """
     Create .raw.gz file by concatenating the output chunks of the last step before filtering
@@ -925,7 +914,7 @@ rule raw:
     :output:stats: the corresponding stats file in plain text
     """
     input:
-        raw_input_filename,
+        rules.filter.input,
     output:
         corpus=f"{PERMANENT}/{{lang}}.raw{PARAGRAPHS}.gz",
         stats=f"{PERMANENT}/{{lang}}.stats.raw{PARAGRAPHS}",
@@ -939,7 +928,6 @@ rule raw:
         echo "Words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
         """
 
-sents_input_filename = rules.filter.output
 
 rule sents:
     """
@@ -948,7 +936,7 @@ rule sents:
     :output: the concatenated inputs, sorted, same columns as input
     """
     input:
-        sents_input_filename,
+        rules.filter.output,
     output:
         corpus=f"{PERMANENT}/{{lang}}.sent.gz",
         stats=f"{PERMANENT}/{{lang}}.stats.sent",

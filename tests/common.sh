@@ -20,7 +20,7 @@ download_monocleaner_model()
     langs=$1
     output=$2
     if [ ! -f "${output}/${langs}.tgz" ]; then
-        wget "${base}/${langs}.tgz" -P "${output}"
+        wget -q "${base}/${langs}.tgz" -P "${output}"
         tar xzf "${output}/${langs}.tgz" -C "${output}"
     fi
 }

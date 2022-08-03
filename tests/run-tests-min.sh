@@ -36,47 +36,33 @@ MONOTEXTOR="monotextor"
 MONOCLEANER="${WORK}/monocleaner-model"
 FAILS="${WORK}/data/fails.log"
 mkdir -p "${WORK}"
+mkdir -p "${WORK}/permanent"
+mkdir -p "${WORK}/transient"
+mkdir -p "${WORK}/data"
+mkdir -p "${WORK}/data/warc"
 mkdir -p "${WORK}/reports"
 mkdir -p "${MONOCLEANER}"
-mkdir -p "${WORK}/data/warc"
-mkdir -p "${WORK}/data/warc/clipped"
-mkdir -p "${WORK}/data/parallel-corpus"
-mkdir -p "${WORK}/data/parallel-corpus/Europarl"
-mkdir -p "${WORK}/data/parallel-corpus/DGT"
 rm -f "$FAILS"
 touch "$FAILS"
 
 # Download necessary files
 # WARCs
-download_warc "${WORK}/data/warc/greenpeace.warc.gz" https://github.com/bitextor/bitextor-data/releases/download/bitextor-warc-v1.1/greenpeace.canada.warc.gz &
+download_warc "${WORK}/data/warc/greenpeace.warc.gz" https://github.com/bitextor/bitextor-data/releases/download/bitextor-warc-v1.1/greenpeace.canada-small.warc.gz &
 # Bicleaner models
 download_monocleaner_model "en" "${MONOCLEANER}" &
 download_monocleaner_model "fr" "${MONOCLEANER}" &
 wait
 
-### WARC clipped
-if [ ! -f "${WORK}/data/warc/clipped/greenpeaceaa.warc.gz" ]; then
-    ${DIR}/split-warc.py -r 1000 "${WORK}/data/warc/greenpeace.warc.gz" "${WORK}/data/warc/clipped/greenpeace" &
-fi
-
-wait
-
-# Remove unnecessary clipped WARCs
-ls "${WORK}/data/warc/clipped/" | grep -v "^greenpeaceaa[.]" | xargs -I{} rm "${WORK}/data/warc/clipped/{}"
-# Rename and link
-mv "${WORK}/data/warc/greenpeace.warc.gz" "${WORK}/data/warc/greenpeace.original.warc.gz"
-ln -s "${WORK}/data/warc/clipped/greenpeaceaa.warc.gz" "${WORK}/data/warc/greenpeace.warc.gz"
-
 # MT (id >= 10)
 (
     ${MONOTEXTOR} ${FORCE} --notemp -j ${THREADS} \
-        --config profiling=True permanentDir="${WORK}/permanent/monotextor-output-en-and-fr" \
-            dataDir="${WORK}/data/data-en-and-fr" transientDir="${WORK}/transient-en-and-fr" \
+        --config profiling=True permanentDir="${WORK}/permanent/10" \
+            dataDir="${WORK}/data/10" transientDir="${WORK}/transient/10" \
             warcs="['${WORK}/data/warc/greenpeace.warc.gz']" preprocessor="warc2text" shards=0 batches=99999 langs="['en', 'fr']" \
             paragraphIdentification=True monocleaner=True monofixer=True \
-	    monocleanerModels="{'en': '${MONOCLEANER}/en/', 'fr': '${MONOCLEANER}/fr/'}" skipSentenceSplitting=True\
-        &> "${WORK}/reports/10-en--and-fr.report"
-    annotate_and_echo_info 10 "$?" "$(get_nolines ${WORK}/permanent/monotextor-output-en-and-fr/en.sent.gz)"
+	        monocleanerModels="{'en': '${MONOCLEANER}/en/', 'fr': '${MONOCLEANER}/fr/'}" skipSentenceSplitting=True \
+        &> "${WORK}/reports/10.report"
+    annotate_and_echo_info 10 "$?" "$(get_nolines ${WORK}/permanent/10/en.raw.paragraphs.gz)"
 ) &
 
 wait
