@@ -61,9 +61,9 @@ make -j install
 Optionally, it is possible to skip the compilation of the dependencies that are not expected to be used:
 
 ```bash
-cmake -DSKIP_MGIZA=ON -DCMAKE_INSTALL_PREFIX=$HOME/.local .. # MGIZA is used for dictionary generation
+cmake -DSKIP_WARC2TEXT=ON -DCMAKE_INSTALL_PREFIX=$HOME/.local ..
 # other dependencies that can optionally be skipped:
-# WARC2TEXT, PREVERTICAL2TEXT, DOCALIGN, BLEUALIGN, HUNALIGN, BIROAMER, KENLM
+# WARC2TEXT, PREVERTICAL2TEXT, KENLM
 ```
 
 ### Golang packages
@@ -91,8 +91,9 @@ pip3 install --upgrade pip
 # monotextor:
 pip3 install .
 # additional dependencies:
-pip3 install ./monocleaner && pip install ./kenlm --install-option="--max_order 7"
-pip3 install ./bifixer
+pip3 install ./third_party/monocleaner
+pip3 install ./third_party/kenlm --install-option="--max_order 7"
+pip3 install ./third_party/bifixer
 ```
 
 If you don't want to install all Python requirements in `requirements.txt` because you don't expect to run some of Monotextor modules, you can comment those `*.txt` in `requirements.txt` and rerun Monotextor installation.
