@@ -29,6 +29,10 @@ sudo apt install git time python3 python3-venv python3-pip golang-go build-essen
 sudo apt install wget
 ## warc2text:
 sudo apt install uchardet libuchardet-dev libzip-dev
+## Monocleaner:
+sudo apt install libhunspell-dev
+### Hunspell dictionaries (example)
+sudo apt install hunspell-es
 ## Heritrix, PDFExtract and boilerpipe:
 sudo apt install openjdk-8-jdk
 ## PDFExtract:
@@ -45,6 +49,10 @@ sudo dnf install git time python-devel python3-pip golang-go cmake pigz parallel
 sudo dnf install perl-FindBin perl-Time-HiRes perl-Thread
 ## warc2text:
 sudo dnf install uchardet-devel libzip-devel
+## Monocleaner:
+sudo dnf install hunspell hunspell-devel
+### Hunspell dictionaries (example)
+sudo dnf install hunspell-es
 ```
 
 ### C++ dependencies

@@ -22,7 +22,9 @@ jobs:
       -  name: Install required linux packages
          run: |
             sudo apt-get --assume-yes update
-            sudo apt-get --assume-yes install git time python3 python3-venv python3-pip python3-setuptools golang-go build-essential cmake libboost-all-dev liblzma-dev time curl pigz parallel wget uchardet libuchardet-dev libzip-dev
+            sudo apt-get --assume-yes install git time python3 python3-venv python3-pip python3-setuptools \
+               golang-go build-essential cmake libboost-all-dev liblzma-dev time curl pigz parallel wget \
+               uchardet libuchardet-dev libzip-dev libhunspell-dev hunspell-fr
       -  name: Set up Python3
          uses: actions/setup-python@v2
          with:
