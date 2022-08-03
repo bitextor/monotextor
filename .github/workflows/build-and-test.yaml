@@ -47,7 +47,7 @@ jobs:
       -  name: Install giashard
          run: |
             go install github.com/paracrawl/giashard/cmd/giashard@latest
-      -  name: Compiling bitextor and submodules
+      -  name: Compiling monotextor and submodules
          run: |
             mkdir build_cmake && cd build_cmake
             cmake -DCMAKE_INSTALL_PREFIX=/usr ..
@@ -95,7 +95,7 @@ jobs:
          with:
             name: all-sent.gz
             path: ${{ env.WORK }}/permanent/**/*.sent.gz
-      -  name: Upload sent.gz files (artifacts)
+      -  name: Upload raw.paragraphs.gz files (artifacts)
          if: ${{ always() }}
          uses: actions/upload-artifact@v3
          with:
