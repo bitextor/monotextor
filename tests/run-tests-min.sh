@@ -58,7 +58,7 @@ wait
 (
     init_test "10"
 
-    ${MONOTEXTOR} ${FORCE} --notemp -j ${THREADS} \
+    ${MONOTEXTOR} \
         --config profiling=True permanentDir="${WORK}/permanent/${TEST_ID}" \
             dataDir="${WORK}/data/${TEST_ID}" transientDir="${WORK}/transient/${TEST_ID}" \
             warcs="['${WORK}/data/warc/greenpeace.warc.gz']" preprocessor="warc2text" shards=0 batches=99999 langs="['en', 'fr']" \
