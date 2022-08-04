@@ -126,7 +126,7 @@ BATCHES = config["batches"]
 
 BOILERPLATE_CLEANING = config["boilerplateCleaning"]
 PARAGRAPH_IDENTIFICATION = config["paragraphIdentification"]
-DISABLE_MONOCLEANER_HARDRULES = ""
+DISABLE_MONOCLEANER_HARDRULES = "" # TODO is this variable intended to be used?
 PARAGRAPHS = ""
 if "skipSentenceSplitting" in config and config["skipSentenceSplitting"]:
     PARAGRAPHS = ".paragraphs"
@@ -888,24 +888,24 @@ rule filter:
         remove sentences below monoclenaer threshold (if applicable)
     """
     input:
-        rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
+        monocleaner=rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
     output:
         temp(f"{DATADIR}/shards/04_03.filtered.{{lang}}.gz"),
     threads: THREADS["filter"]
-    run:
-        cat_cmd = "cat"
-        if input[0][-3:] == ".gz":
-            cat_cmd = "pigz -dcp {threads}"
-        cmd = f""" {cat_cmd} {input} """
-        if MONOCLEANER:
-            cmd += (
-                f""" | {PROFILING} python3 {WORKFLOW}/bitextor_filterbicleaner.py --threshold {MONOCLEANER_THRESHOLD} """
-            )
-        cmd += f""" | LC_ALL=C sort -t $'\t' -k4,4 -k5,5nr --parallel {threads} --compress-program=gzip """  # sorted by monofixer hash and score
-        cmd += f""" | LC_ALL=C sort -t $'\t' -k4,4 -u  --parallel {threads} --compress-program=gzip """ # Dedup
-        cmd += f""" | cut -f2 """ # Extract the sentences
-        cmd += f""" | pigz -c > {output} """
-        shell(cmd)
+    shell:
+        """
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
+
+        $CAT {input} \
+            | ( [[ "{MONOCLEANER}" == "True" ]] \
+                && ({PROFILING} python3 {WORKFLOW}/bitextor_filterbicleaner.py \
+                    --threshold {MONOCLEANER_THRESHOLD}; true) \
+                || cat ) \
+            | LC_ALL=C sort -t $'\t' -k4,4 -k5,5nr --parallel {threads} --compress-program=gzip \
+            | LC_ALL=C sort -t $'\t' -k4,4 -u  --parallel {threads} --compress-program=gzip \
+            | cut -f2 \
+            | pigz -c > {output}
+        """
 
 
 rule raw:
@@ -917,7 +917,7 @@ rule raw:
     :output:stats: the corresponding stats file in plain text
     """
     input:
-        rules.filter.input,
+        rules.filter.input.monocleaner,
     output:
         corpus=f"{PERMANENT}/{{lang}}.raw{PARAGRAPHS}.gz",
         stats=f"{PERMANENT}/{{lang}}.stats.raw{PARAGRAPHS}",

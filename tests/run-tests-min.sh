@@ -51,19 +51,20 @@ download_file "${WORK}/data/warc/greenpeace.warc.gz" https://github.com/bitextor
 # Monocleaner models
 download_monocleaner_model "en" "${MONOCLEANER}" &
 download_monocleaner_model "fr" "${MONOCLEANER}" &
+
 wait
 
 # MT (id >= 10)
 (
-    init_test "11"
+    init_test "10"
 
     ${MONOTEXTOR} ${FORCE} --notemp -j ${THREADS} \
-        --config profiling=True permanentDir="${WORK}/permanent/10" \
-            dataDir="${WORK}/data/10" transientDir="${WORK}/transient/10" \
+        --config profiling=True permanentDir="${WORK}/permanent/${TEST_ID}" \
+            dataDir="${WORK}/data/${TEST_ID}" transientDir="${WORK}/transient/${TEST_ID}" \
             warcs="['${WORK}/data/warc/greenpeace.warc.gz']" preprocessor="warc2text" shards=0 batches=99999 langs="['en', 'fr']" \
             paragraphIdentification=True monocleaner=True monofixer=True \
 	        monocleanerModels="{'en': '${MONOCLEANER}/en/', 'fr': '${MONOCLEANER}/fr/'}" skipSentenceSplitting=True \
-        &> "${WORK}/reports/10.report"
+        &> "${WORK}/reports/${TEST_ID}.report"
 
     finish_test "en fr" "raw.paragraphs.gz"
 ) &

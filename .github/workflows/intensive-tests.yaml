@@ -71,7 +71,7 @@ jobs:
          if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
          run: |
             go install github.com/paracrawl/giashard/cmd/giashard@latest
-      -  name: Compiling bitextor and submodules
+      -  name: Compiling monotextor and submodules
          if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
          run: |
             mkdir build_cmake && cd build_cmake
