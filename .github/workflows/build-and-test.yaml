@@ -95,6 +95,12 @@ jobs:
          with:
             name: all-sent.gz
             path: ${{ env.WORK }}/permanent/**/*.sent.gz
+      -  name: Upload raw.gz files (artifacts)
+         if: ${{ always() }}
+         uses: actions/upload-artifact@v3
+         with:
+            name: all-raw.gz
+            path: ${{ env.WORK }}/permanent/**/*.raw.gz
       -  name: Upload raw.paragraphs.gz files (artifacts)
          if: ${{ always() }}
          uses: actions/upload-artifact@v3

@@ -7,7 +7,7 @@ exit_program()
 {
   >&2 echo "$1 [-w workdir] [-f force_command] [-j threads]"
   >&2 echo ""
-  >&2 echo "Runs several tests to check Bitextor is working"
+  >&2 echo "Runs several tests to check Monotextor is working"
   >&2 echo ""
   >&2 echo "OPTIONS:"
   >&2 echo "  -w <workdir>            Working directory. By default: \$HOME"
@@ -32,7 +32,7 @@ while getopts "hf:w:j:" i; do
 done
 shift $((OPTIND-1))
 
-MONOTEXTOR="monotextor"
+MONOTEXTOR="monotextor-full ${FORCE} --notemp -j ${THREADS} -c ${THREADS} --reason"
 MONOCLEANER="${WORK}/monocleaner-model"
 FAILS="${WORK}/data/fails.log"
 mkdir -p "${WORK}"
@@ -47,14 +47,16 @@ touch "$FAILS"
 
 # Download necessary files
 # WARCs
-download_warc "${WORK}/data/warc/greenpeace.warc.gz" https://github.com/bitextor/bitextor-data/releases/download/bitextor-warc-v1.1/greenpeace.canada-small.warc.gz &
-# Bicleaner models
+download_file "${WORK}/data/warc/greenpeace.warc.gz" https://github.com/bitextor/bitextor-data/releases/download/bitextor-warc-v1.1/greenpeace.canada-small.warc.gz &
+# Monocleaner models
 download_monocleaner_model "en" "${MONOCLEANER}" &
 download_monocleaner_model "fr" "${MONOCLEANER}" &
 wait
 
 # MT (id >= 10)
 (
+    init_test "11"
+
     ${MONOTEXTOR} ${FORCE} --notemp -j ${THREADS} \
         --config profiling=True permanentDir="${WORK}/permanent/10" \
             dataDir="${WORK}/data/10" transientDir="${WORK}/transient/10" \
@@ -62,7 +64,8 @@ wait
             paragraphIdentification=True monocleaner=True monofixer=True \
 	        monocleanerModels="{'en': '${MONOCLEANER}/en/', 'fr': '${MONOCLEANER}/fr/'}" skipSentenceSplitting=True \
         &> "${WORK}/reports/10.report"
-    annotate_and_echo_info 10 "$?" "$(get_nolines ${WORK}/permanent/10/en.raw.paragraphs.gz)"
+
+    finish_test "en fr" "raw.paragraphs.gz"
 ) &
 
 wait

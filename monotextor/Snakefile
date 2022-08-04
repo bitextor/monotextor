@@ -798,6 +798,7 @@ input_aggregate_split = "sentences"
 if PARAGRAPHS:
     input_aggregate_split = "text"
 
+# TODO this is not the expected behaviour of rule "aggregate_*", at least if we compare with Bitextor
 rule aggregate_split:
     """
     Helper rule to implement until=split config
@@ -823,6 +824,8 @@ rule aggregate_split:
 
 
 ### FILTERING AND CLEANING ######################################
+
+# TODO further rules should use shard and batches, and if we want to reduce only use batches, a rule like split_segalign from bitextor might be used
 
 rule monofixer:
     """
