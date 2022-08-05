@@ -17,9 +17,9 @@ Monotextor can be built from source. See [instructions here](INSTALL.md).
 
 ```text
 usage: monotextor [-C FILE [FILE ...]] [-c KEY=VALUE [KEY=VALUE ...]]
-                [-j JOBS] [-k] [--notemp] [--dry-run]
-                [--forceall] [--forcerun [TARGET [TARGET ...]]]
-                [-q] [-h]
+                  [-j JOBS] [-k] [--notemp] [--dry-run]
+                  [--forceall] [--forcerun [TARGET [TARGET ...]]]
+                  [-q] [-h]
 
 launch Monotextor
 
@@ -60,7 +60,8 @@ Monotextor uses a configuration file to define the variables required by the pip
 Monotextor generates the final parallel corpora in multiple formats. These files will be placed in `permanentDir` folder and will have the following format: `{lang}.{prefix}.gz`, where `{prefix}` corresponds to a descriptor of the corresponding format. The list of files that may be produced is the following:
 
 * `{lang}.raw.gz` - default (always generated)
-* `{lang}.sent.gz` - default
+* `{lang}.sent.gz` - generated if `skipSentenceSplitting: false` or not provided.
+* `{lang}.raw.paragraphs.gz` - generated if `skipSentenceSplitting: true`
 
 See [detailed description](OUTPUT.md) of the output files.
 
@@ -75,7 +76,7 @@ Monotextor is a pipeline that runs a collection of scripts to produce a parallel
 
 The following diagram shows the structure of the pipeline and the different scripts that are used in each stage:
 
-![Banner](img/bitextor.png)
+![Banner](img/monotextor.png)
 
 ![Connecting Europe Facility](img/logo_en_cef273x39_nonalpha.png)
 

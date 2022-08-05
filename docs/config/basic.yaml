@@ -1,0 +1,26 @@
+# BASIC VARIABLES
+dataDir: ~/permanent/data
+permanentDir: ~/permanent
+transientDir: ~/transient
+tempDir: ~/transient
+
+# DATA SOURCES - CRAWLING
+hostsFile: ~/hosts.gz # contains a domain to crawl per line
+crawler: "wget"
+crawlTimeLimit: "86400s" # 24 hours
+
+# DATA SOURCES - WARC FILES
+warcsFile: ~/warcs.gz # contains a path to a WARC file per line
+
+# PREPROCESSING
+preprocessor: "warc2text"
+shards: 8 # 2^8 = 256 shards
+batches: 1024 # each shard split into chunks of 1024 MB
+
+langs: ['en', 'fr']
+
+# CLEANING
+monofixer: True
+monocleaner: True
+monocleanerModels: {'en': '~/monocleaner-models/en/', 'fr': '~/monocleaner-models/fr/'}
+monocleanerThreshold: 0.5

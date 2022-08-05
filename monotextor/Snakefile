@@ -161,8 +161,8 @@ if "html5lib" in config and config["html5lib"]:
     HTML5LIB = "--html5lib"
 
 # sentence splitting and tokenisation
-SENTTOKS = {} if not "sentenceSplitters" in config else config["sentenceSplitters"]
-CUSTOMNBPS = {} if not "customNBPs" in config else config["customNBPs"]
+SENTTOKS = {} if not "sentenceSplitters" in config else config["sentenceSplitters"] # TODO is not in args.py, so can't be provided
+CUSTOMNBPS = {} if not "customNBPs" in config else config["customNBPs"] # TODO is not in args.py, so can't be provided
 WORDTOKS = {} if not "wordTokenizers" in config else config["wordTokenizers"]
 MORPHTOKS = {} if not "morphologicalAnalysers" in config else config["morphologicalAnalysers"]
 
@@ -879,10 +879,10 @@ rule monocleaner:
                 | pigz -c > {output}
         """
 
-
+# TODO is correct to apply deduplication in the rule filter? If so, there is no difference between rule raw and sents when PARAGRAPHS="" (i.e. the output files of the rules raw an sents will have the exact same content)
 rule filter:
     """
-    Filter by monoclenaer threshold (if applicable), sort by sentence pair or monofixer hash
+    Filter by monocleaner threshold (if applicable), sort by sentence pair or monofixer hash
     :input: either the output of monocleaner (if enabled), or the output of the previous step (i.e. what would be the input of monocleaner if it was enabled)
     :output: plain-text file, marked as temp, the senteces are sorted by duplicates
         remove sentences below monoclenaer threshold (if applicable)
