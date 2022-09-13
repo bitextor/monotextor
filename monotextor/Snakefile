@@ -126,11 +126,9 @@ BATCHES = config["batches"]
 
 BOILERPLATE_CLEANING = config["boilerplateCleaning"]
 PARAGRAPH_IDENTIFICATION = config["paragraphIdentification"]
-DISABLE_MONOCLEANER_HARDRULES = "" # TODO is this variable intended to be used?
 PARAGRAPHS = ""
 if "skipSentenceSplitting" in config and config["skipSentenceSplitting"]:
     PARAGRAPHS = ".paragraphs"
-    DISABLE_MONOCLEANER_HARDRULES = "--disable_hardrules"
 CLEANHTML = ""
 FTFY = ""
 LANGID = "cld2"
@@ -161,10 +159,8 @@ if "html5lib" in config and config["html5lib"]:
     HTML5LIB = "--html5lib"
 
 # sentence splitting and tokenisation
-SENTTOKS = {} if not "sentenceSplitters" in config else config["sentenceSplitters"] # TODO is not in args.py, so can't be provided
-CUSTOMNBPS = {} if not "customNBPs" in config else config["customNBPs"] # TODO is not in args.py, so can't be provided
-WORDTOKS = {} if not "wordTokenizers" in config else config["wordTokenizers"]
-MORPHTOKS = {} if not "morphologicalAnalysers" in config else config["morphologicalAnalysers"]
+SENTTOKS = {} if not "sentenceSplitters" in config else config["sentenceSplitters"] # TODO possible future implementation
+CUSTOMNBPS = {} if not "customNBPs" in config else config["customNBPs"] # TODO possible future implementation
 
 PRUNE_THRESHOLD = f"--prune {config['pruneThreshold']}"
 PRUNE_TYPE = f"--prune-type {config['pruneType']}"
@@ -339,11 +335,11 @@ elif UNTIL == "preprocess":
 elif UNTIL == "shard":
     OUTPUT = expand("{datadir}/shards/02.batches.{lang}", datadir=DATADIR, lang=LANGS)
 elif UNTIL == "split":
-    OUTPUT = expand("{datadir}/shards/03.split.{lang}.gz", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{datadir}/shards/03.split.{lang}{paragraphs}.gz", datadir=DATADIR, lang=LANGS, paragraphs=PARAGRAPHS)
 elif UNTIL == "monofixer":
-    OUTPUT = expand("{datadir}/shards/04_01.monofixer.{lang}.gz", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{datadir}/shards/04_01.monofixer.{lang}{paragraphs}.gz", datadir=DATADIR, lang=LANGS, paragraphs=PARAGRAPHS)
 elif UNTIL == "monocleaner":
-    OUTPUT = expand("{datadir}/shards/04_02.monocleaner.{lang}.gz", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{datadir}/shards/04_02.monocleaner.{lang}{paragraphs}.gz", datadir=DATADIR, lang=LANGS, paragraphs=PARAGRAPHS)
 elif UNTIL == "filter":
     OUTPUT = expand("{datadir}/shards/04_03.filter.{lang}.gz", datadir=DATADIR, lang=LANGS)
 
@@ -798,7 +794,6 @@ input_aggregate_split = "sentences"
 if PARAGRAPHS:
     input_aggregate_split = "text"
 
-# TODO this is not the expected behaviour of rule "aggregate_*", at least if we compare with Bitextor
 rule aggregate_split:
     """
     Helper rule to implement until=split config
@@ -826,6 +821,7 @@ rule aggregate_split:
 ### FILTERING AND CLEANING ######################################
 
 # TODO further rules should use shard and batches, and if we want to reduce only use batches, a rule like split_segalign from bitextor might be used
+#  Explanation: parallelism is trusted to parallel bin, but we are losing job parallelism anyway, since one first step might be the job parallelism and, after that, parallel execution
 
 rule monofixer:
     """
@@ -879,7 +875,7 @@ rule monocleaner:
                 | pigz -c > {output}
         """
 
-# TODO is correct to apply deduplication in the rule filter? If so, there is no difference between rule raw and sents when PARAGRAPHS="" (i.e. the output files of the rules raw an sents will have the exact same content)
+
 rule filter:
     """
     Filter by monocleaner threshold (if applicable), sort by sentence pair or monofixer hash

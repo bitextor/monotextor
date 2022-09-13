@@ -149,6 +149,8 @@ def validate_args(config):
         # sentence splitting
         'pruneThreshold': {'type': 'integer', 'min': 0, 'default': 0},
         'pruneType': {'type': 'string', 'allowed': ['words', 'chars'], 'default': 'words'},
+        'sentenceSplitters': {'type': 'dict'}, # TODO possible future implementation
+        'customNBPs': {'type': 'dict'}, # TODO possible future implementation
         # post processing
         'deferred': {'type': 'boolean', 'default': False},
         'monofixer': {'type': 'boolean', 'default': False},
