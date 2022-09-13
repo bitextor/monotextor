@@ -27,6 +27,7 @@ include: "rules/common.smk"
 
 WORKFLOW = workflow.basedir
 DATADIR = config["dataDir"]
+TRANSIENT = config["transientDir"]
 PERMANENT = config["permanentDir"]
 TMPDIR = config["tempDir"]
 
@@ -337,11 +338,11 @@ elif UNTIL == "shard":
 elif UNTIL == "split":
     OUTPUT = expand("{datadir}/shards/03.split.{lang}{paragraphs}.gz", datadir=DATADIR, lang=LANGS, paragraphs=PARAGRAPHS)
 elif UNTIL == "monofixer":
-    OUTPUT = expand("{datadir}/shards/04_01.monofixer.{lang}{paragraphs}.gz", datadir=DATADIR, lang=LANGS, paragraphs=PARAGRAPHS)
+    OUTPUT = expand("{transient}/{lang}/04_01.monofixer.{lang}{paragraphs}.gz", transient=TRANSIENT, lang=LANGS, paragraphs=PARAGRAPHS)
 elif UNTIL == "monocleaner":
-    OUTPUT = expand("{datadir}/shards/04_02.monocleaner.{lang}{paragraphs}.gz", datadir=DATADIR, lang=LANGS, paragraphs=PARAGRAPHS)
+    OUTPUT = expand("{transient}/{lang}/04_02.monocleaner.{lang}{paragraphs}.gz", transient=TRANSIENT, lang=LANGS, paragraphs=PARAGRAPHS)
 elif UNTIL == "filter":
-    OUTPUT = expand("{datadir}/shards/04_03.filter.{lang}.gz", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{transient}/{lang}/04_03.filtered.{lang}.gz", transient=TRANSIENT, lang=LANGS)
 
 shell.prefix("set -euo pipefail;")
 
@@ -832,9 +833,9 @@ rule monofixer:
     :output: plain text, marked as temp, same columns as input with two new columns: hash and score
     """
     input:
-        split=f"{DATADIR}/shards/03.split.{{lang}}{PARAGRAPHS}.gz",
+        split=rules.aggregate_split.output,
     output:
-        temp(f"{DATADIR}/shards/04_01.monofixer.{{lang}}{PARAGRAPHS}.gz"),
+        temp(f"{TRANSIENT}/{{lang}}/04_01.monofixer.{{lang}}{PARAGRAPHS}.gz"),
     threads: THREADS["monofixer"]
     shell:
         """
@@ -860,7 +861,7 @@ rule monocleaner:
         monofixer=rules.monofixer.output if MONOFIXER else rules.monofixer.input.split,
         model=lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
     output:
-        f"{DATADIR}/shards/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
+        f"{TRANSIENT}/{{lang}}/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
     threads: THREADS["monocleaner"]
     shell:
         """
@@ -886,7 +887,7 @@ rule filter:
     input:
         monocleaner=rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
     output:
-        temp(f"{DATADIR}/shards/04_03.filtered.{{lang}}.gz"),
+        temp(f"{TRANSIENT}/{{lang}}/04_03.filtered.{{lang}}.gz"),
     threads: THREADS["filter"]
     shell:
         """
