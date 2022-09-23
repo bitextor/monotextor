@@ -785,7 +785,7 @@ rule split:
             | {PROFILING} ${{parallel_cmd}} python3 {WORKFLOW}/bitextor_split.py \
                 {params.splitter} {params.customnbp} \
                 --langcode "{wildcards.lang}" \
-                {PRUNE_THRESHOLD} {PRUNE_TYPE} {params.paragraphsid} \
+                {PRUNE_THRESHOLD} {PRUNE_TYPE} {params.paragraphsid} --propagate-metadata \
             | pigz -c > {output}
         """
 
@@ -859,7 +859,7 @@ rule monocleaner:
     """
     input:
         monofixer=rules.monofixer.output if MONOFIXER else rules.monofixer.input.split,
-        model=lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
+        model="" if not MONOCLEANER_MODELS else lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
     output:
         f"{TRANSIENT}/{{lang}}/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
     threads: THREADS["monocleaner"]
@@ -870,10 +870,22 @@ rule monocleaner:
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
         CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
+        WC_BYTES=$($CAT {input.monofixer} | wc -c)
+
+        if [[ "$WC_BYTES" == "0" ]]; then
+            # Monocleaner doesn't work if the input is empty
+
+            MONOCLEANER_CMD="cat"
+        else
+            MONOCLEANER_CMD="\
+                {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only \
+                        --add_lang_ident --disable_hardrules --scol 2 -q {input.model} - - \
+                    | paste <($CAT {input.monofixer}) -"
+        fi
+
         $CAT {input.monofixer} \
-                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --add_lang_ident --disable_hardrules --scol 2 -q {input.model} - - \
-                | paste <($CAT {input.monofixer}) - \
-                | pigz -c > {output}
+            | eval "$MONOCLEANER_CMD" \
+            | pigz -c > {output}
         """
 
 

@@ -25,8 +25,8 @@ import logging
 from sentence_splitter import SentenceSplitter, SentenceSplitterException
 from loomchild.segmenter import LoomchildSegmenter
 
-from monotextor.utils.common import open_xz_or_gzip_or_plain
-from monotextor.utils.common import ExternalTextProcessor
+from bitextor.utils.common import open_xz_or_gzip_or_plain
+from bitextor.utils.common import ExternalTextProcessor
 
 
 # True -> keep sentence
@@ -42,25 +42,8 @@ def filter_trash(sentence):
     return n < len(sentence) // 2
 
 
-def split_external(text, external_splitter, prune_type="words", prune_threshold=0, filter_bad_sentences=True):
-    output = external_splitter.process(text)
-
-    segments = output.strip().split("\n")
-    # prune long sentences
-    if prune_threshold and prune_type == "words":
-        segments = [s for s in segments if not len(s.split()) > prune_threshold]
-    elif prune_threshold and prune_type == "chars":
-        segments = [s for s in segments if not len(s) > prune_threshold]
-
-    if filter_bad_sentences:
-        segments = [s for s in segments if filter_trash(s)]
-
-    segmented_text = "\n".join(segments) + "\n"
-    return segmented_text
-
-
-def split_moses(text, moses_splitter, prune_type="words", prune_threshold=0, filter_bad_sentences=True):
-    segments = moses_splitter.split(text)
+def split_segments(text, splitter_unary_func, prune_type="words", prune_threshold=0, filter_bad_sentences=True, return_list=False):
+    segments = splitter_unary_func(text)
 
     # prune long sentences
     if prune_threshold and prune_type == "words":
@@ -71,109 +54,125 @@ def split_moses(text, moses_splitter, prune_type="words", prune_threshold=0, fil
     if filter_bad_sentences:
         segments = [s for s in segments if filter_trash(s)]
 
-    segmented_text = "\n".join(segments) + "\n"
+    segments = [s.strip() for s in segments if s.strip() != '']
+
+    if return_list:
+        return segments
+
+    segmented_text = '\n'.join(segments) + '\n'
+
     return segmented_text
-
-
-def split_loomchild(text, loomchild_splitter, prune_type="words", prune_threshold=0, filter_bad_sentences=True):
-    segments = loomchild_splitter.get_document_segmentation(text)
-    # prune long sentences
-    if prune_threshold and prune_type == "words":
-        segments = [s for s in segments if not len(s.split()) > prune_threshold]
-    elif prune_threshold and prune_type == "chars":
-        segments = [s for s in segments if not len(s) > prune_threshold]
-    
-    if filter_bad_sentences:
-        segments = [s for s in segments if filter_trash(s)]
-
-    segmented_text = "\n".join(segments) + "\n"
-    return segmented_text
-
 
 
 oparser = argparse.ArgumentParser(description="Tool that does sentence splitting on plain text")
-oparser.add_argument('--text', default="-",
+oparser.add_argument("--text", default="-",
                      help="Plain text file")
-oparser.add_argument('--sentence-splitter', dest='splitter', default=None,
-                     help="Sentence splitter command line. If not provided, Moses split_sentences Python port "
+oparser.add_argument("--sentence-splitter", dest="splitter",
+                     help="Sentence splitter command line. If not provided, loomchild loomchild-segment Python port "
                           "will be used")
-oparser.add_argument('--langcode', default="en",
+oparser.add_argument("--langcode", default="en",
                      help="Language code for default sentence splitter and tokenizer")
-oparser.add_argument('--customnbp',
+oparser.add_argument("--customnbp",
                      help="Path for custom non breaking prefixes used by Moses Sentence Splitter Python port")
-oparser.add_argument('--sentences-output', default="plain_sentences.xz", dest='sent_output',
+oparser.add_argument("--sentences-output", dest="sent_output", default="-",
                      help="Path of the output file that will contain sentence splitted text")
 oparser.add_argument("--prune", dest="prune_threshold", type=int, default=0,
                      help="Prune sentences longer than n (words/characters)")
 oparser.add_argument("--prune-type", choices={"words", "chars"}, default="words",
                      help="Prune sentences either by words or characters")
-oparser.add_argument('--dont-filter', action='store_true',
+oparser.add_argument("--dont-filter", action="store_true",
                      help="By default, sentences which are detected to be very noisy or have very bad quality are discarded")
-oparser.add_argument('--process-paragraphs', action='store_true',
-                     help="Once the sentence had been base64-decoded, the second column contains the paragraph "
-                          "identification which will be processed")
+oparser.add_argument("--process-paragraphs", action="store_true",
+                     help="Paragraph identification, starting in 0, is expected to be in the second column of the input file")
+oparser.add_argument("--propagate-metadata", action="store_true",
+                     help="All columns, starting from 2nd, will be propagated. If --process-paragraphs is set, columns starting"
+                          " from 3rd column will be propagated")
 
 options = oparser.parse_args()
 
 splitter = options.splitter
-splitter_func = None
-# no sentence splitter command provided, use moses:
-if splitter and splitter == "moses":
-    splitter_func = split_moses
+process_paragraphs = options.process_paragraphs
+propagate_metadata = options.propagate_metadata
+
+splitter_func = lambda s: s.split('\n')
+
+# Get splitter
+if not splitter or splitter == "loomchild":
+    # Loomchild is the default sentence splitter
+    splitter_func = LoomchildSegmenter(options.langcode).get_document_segmentation
+elif splitter == "moses":
     try:
         if options.customnbp:
-            splitter = SentenceSplitter(language=options.langcode, non_breaking_prefix_file=options.customnbp)
+            splitter_func = SentenceSplitter(language=options.langcode, non_breaking_prefix_file=options.customnbp)
         else:
-            splitter = SentenceSplitter(language=options.langcode)
+            splitter_func = SentenceSplitter(language=options.langcode)
     except SentenceSplitterException as e:
         sys.stderr.write(str(e) + "\n")
-        splitter = SentenceSplitter(language='en')
-elif not splitter or splitter == "loomchild":
-    splitter_func = split_loomchild
-    splitter = LoomchildSegmenter(options.langcode)
+        splitter_func = SentenceSplitter(language='en')
+
+    splitter_func = splitter_func.split
+elif splitter == "none":
+    pass
 
 # TODO check TODO in bitextor_tokenize.py about ExternalTextProcessor and ToolWrapper
 # use custom sentence splitter via ExternalTextProcessor (inefficient):
 else:
-    splitter_func = split_external
-    splitter = ExternalTextProcessor(os.path.expanduser(splitter))
+    splitter_func = ExternalTextProcessor(os.path.expanduser(splitter)).process
 
-with open_xz_or_gzip_or_plain(options.text) if options.text != "-" else sys.stdin as reader:
-    for doc_idx, doc in enumerate(reader):
+with open_xz_or_gzip_or_plain(options.text) if options.text != "-" else sys.stdin as reader, \
+     open(options.sent_output, 'w') if options.sent_output != "-" else sys.stdout as writer:
+    for doc_idx, doc in enumerate(reader, 1):
         sentences = ""
         content = ""
+        doc = doc.strip()
+        skip = False
 
         try:
-            content = base64.b64decode(doc.strip()).decode("utf-8")
+            content = base64.b64decode(doc).decode("utf-8").strip(' \n')
         except UnicodeDecodeError:
-            logging.warning(f"unicode decoding error while processing doc #{doc_idx}")
+            logging.error("Unicode decoding error: skipping document #%d", doc_idx)
 
-        if options.process_paragraphs:
-            content = content.rstrip().split("\n")
+            skip = True
 
-            # Split each sentence of the paragraph and identify each of them with the corresponding paragraph
-            for sent_idx, sentence in enumerate(content):
-                paragraph = sentence.split("\t")
+        if skip:
+            # TODO should we try to get the content of the file? We shouldn't write the content directly
+            #  since the previous error for which we skip the sentence splitting can't handle correctly
+            #  the metadata, what might lead to unexpected results in further stages. Furthermore, the
+            #  malformed BASE64 content might lead to further stages to fail as well
+            continue
 
-                if len(paragraph) == 1:
-                    sentences += f"{paragraph[0]}\tp-1s-1\n"
-                    logging.warning(f"could not get the paragraph identification data for the doc #{doc_idx}, sentence #{sent_idx}: using 'p-1s-1'")
-                    continue
+        content = content.split("\n")
 
-                # Use index 6 to discard doc metadata fields
-                paragraph_text = ' '.join(paragraph[:-6]).strip() # Replace '\t' with ' '
-                paragraph_id = paragraph[-6]
-                sentences_wo_paragraphs = splitter_func(paragraph_text, splitter, options.prune_type,
-                                                        options.prune_threshold, not options.dont_filter).split("\n")
-                sentences_wo_paragraphs = [sentence.strip() for sentence in sentences_wo_paragraphs]
+        # Split each sentence of the paragraph and identify each of them with the corresponding paragraph
+        for sent_idx, sentence in enumerate(content, 1):
+            column = sentence.split('\t')
+            paragraph_text = column[0].strip()
+
+            if process_paragraphs and len(column) == 1:
+                sentences += f"{paragraph_text}\tp-1s-1\n"
+
+                logging.error("Could not get the paragraph identification data for the doc #%d, sentence #%d: using 'p-1s-1'", doc_idx, sent_idx)
+
+                continue
+
+            sentences_wo_paragraphs = split_segments(paragraph_text, splitter_func, options.prune_type,
+                                                        options.prune_threshold, not options.dont_filter, return_list=True)
+            suffix_offset = 2 if process_paragraphs else 1
+            suffix = ('\t' if len(column) > suffix_offset else '') + '\t'.join(column[suffix_offset:]) + '\n' if propagate_metadata else '\n'
+
+            if process_paragraphs:
+                try:
+                    paragraph_id = int(column[1]) + 1 # Start at 1
+                except ValueError as e:
+                    raise Exception(f"Couldn't process document #{doc_idx}, sentence #{sent_idx}") from e
 
                 # Add the paragraph data to the splitted sentences
                 for idx in range(len(sentences_wo_paragraphs)):
-                    if sentences_wo_paragraphs[idx] != "":
-                        sentences += f"{sentences_wo_paragraphs[idx]}\tp{paragraph_id}s{idx}\n"
-        else:
-            content = content.strip().replace("\t", " ")
-            content = '\n'.join([c.strip() for c in content.split('\n')])
-            sentences = splitter_func(content, splitter, options.prune_type, options.prune_threshold, not options.dont_filter)
+                    sentences += f"{sentences_wo_paragraphs[idx]}\tp{paragraph_id}s{idx + 1}/{len(sentences_wo_paragraphs)}{suffix}"
+            else:
+                for idx in range(len(sentences_wo_paragraphs)):
+                    sentences += f"{sentences_wo_paragraphs[idx]}{suffix}"
 
-        print(base64.b64encode(sentences.encode("utf-8")).decode("utf-8"))
+        sentences = base64.b64encode(sentences.encode("utf-8")).decode("utf-8")
+
+        writer.write(f"{sentences}\n")
