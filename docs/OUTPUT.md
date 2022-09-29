@@ -23,8 +23,8 @@ The file that will be always generated (regardless of configuration) is `{lang}.
         * `monofixer_hash` tags duplicate or near-duplicate text
         * `monofixer_score` rates quality of duplicate or near-duplicate text
     5. `monocleaner_lang_id monocleaner_score` - Monocleaner classifer output
-        * `monocleaner_lang_id` is the lang which Monocleaner detects
-        * `monocleaner_score` is the quality metric of Monocleaner for the text
+        * `monocleaner_lang_id` is the lang which Monocleaner detects using [FastSpell](https://github.com/mbanon/fastspell)
+        * `monocleaner_score` is the fluency score of Monocleaner for the text
 
     This file comes accompanied by the corresponding statistics file `{lang}.stats.raw`, which provides information the size of the corpus in MB and in number of tokens.
 
