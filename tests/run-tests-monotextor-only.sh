@@ -33,7 +33,6 @@ done
 shift $((OPTIND-1))
 
 MONOTEXTOR="monotextor-full ${FORCE} --notemp -j ${THREADS} -c ${THREADS} --reason"
-MONOCLEANER="${WORK}/monocleaner-model"
 FAILS="${WORK}/data/fails.log"
 mkdir -p "${WORK}"
 mkdir -p "${WORK}/permanent"
@@ -41,17 +40,12 @@ mkdir -p "${WORK}/transient"
 mkdir -p "${WORK}/data"
 mkdir -p "${WORK}/data/warc"
 mkdir -p "${WORK}/reports"
-mkdir -p "${MONOCLEANER}"
 rm -f "$FAILS"
 touch "$FAILS"
 
 # Download necessary files
 # WARCs
 download_file "${WORK}/data/warc/greenpeace.warc.gz" https://github.com/bitextor/bitextor-data/releases/download/bitextor-warc-v1.1/greenpeace.canada-small.warc.gz &
-# Monocleaner models
-download_monocleaner_model "en" "${MONOCLEANER}" &
-download_monocleaner_model "fr" "${MONOCLEANER}" &
-
 wait
 
 # MT (id >= 10)
@@ -61,9 +55,8 @@ wait
     ${MONOTEXTOR} \
         --config profiling=True permanentDir="${WORK}/permanent/${TEST_ID}" \
             dataDir="${WORK}/data/${TEST_ID}" transientDir="${WORK}/transient/${TEST_ID}" \
-            warcs="['${WORK}/data/warc/greenpeace.warc.gz']" preprocessor="warc2text" shards=0 batches=99999 langs="['en', 'fr']" \
-            paragraphIdentification=True monocleaner=True monofixer=True \
-	        monocleanerModels="{'en': '${MONOCLEANER}/en/', 'fr': '${MONOCLEANER}/fr/'}" skipSentenceSplitting=True \
+            warcs="['${WORK}/data/warc/greenpeace.warc.gz']" preprocessor="warc2text" shards=0 batches=99999 \
+            langs="['en', 'fr']" paragraphIdentification=True skipSentenceSplitting=True \
         &> "${WORK}/reports/${TEST_ID}.report"
 
     finish_test "en fr" "raw.paragraphs.gz"

@@ -34,7 +34,7 @@ if __name__ == "__main__":
     requirements=[]
     wd = os.path.dirname(os.path.abspath(__file__))
 
-    copytree("preprocess/moses", os.path.join(wd, "monotextor/data/moses"))
+    copytree("third_party/preprocess/moses", os.path.join(wd, "monotextor/data/moses"))
     requirements = reqs_from_file("requirements.txt")
 
     setuptools.setup(

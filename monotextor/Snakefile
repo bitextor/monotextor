@@ -27,6 +27,7 @@ include: "rules/common.smk"
 
 WORKFLOW = workflow.basedir
 DATADIR = config["dataDir"]
+TRANSIENT = config["transientDir"]
 PERMANENT = config["permanentDir"]
 TMPDIR = config["tempDir"]
 
@@ -126,11 +127,9 @@ BATCHES = config["batches"]
 
 BOILERPLATE_CLEANING = config["boilerplateCleaning"]
 PARAGRAPH_IDENTIFICATION = config["paragraphIdentification"]
-DISABLE_MONOCLEANER_HARDRULES = ""
 PARAGRAPHS = ""
 if "skipSentenceSplitting" in config and config["skipSentenceSplitting"]:
     PARAGRAPHS = ".paragraphs"
-    DISABLE_MONOCLEANER_HARDRULES = "--disable_hardrules"
 CLEANHTML = ""
 FTFY = ""
 LANGID = "cld2"
@@ -161,10 +160,8 @@ if "html5lib" in config and config["html5lib"]:
     HTML5LIB = "--html5lib"
 
 # sentence splitting and tokenisation
-SENTTOKS = {} if not "sentenceSplitters" in config else config["sentenceSplitters"]
-CUSTOMNBPS = {} if not "customNBPs" in config else config["customNBPs"]
-WORDTOKS = {} if not "wordTokenizers" in config else config["wordTokenizers"]
-MORPHTOKS = {} if not "morphologicalAnalysers" in config else config["morphologicalAnalysers"]
+SENTTOKS = {} if not "sentenceSplitters" in config else config["sentenceSplitters"] # TODO possible future implementation
+CUSTOMNBPS = {} if not "customNBPs" in config else config["customNBPs"] # TODO possible future implementation
 
 PRUNE_THRESHOLD = f"--prune {config['pruneThreshold']}"
 PRUNE_TYPE = f"--prune-type {config['pruneType']}"
@@ -287,6 +284,7 @@ THREADS = {
     "split": 1,
     "monofixer": 1,
     "monocleaner": 1,
+    "filter": 1,
     "sents": 1,
 }
 if "parallelWorkers" in config:
@@ -338,13 +336,13 @@ elif UNTIL == "preprocess":
 elif UNTIL == "shard":
     OUTPUT = expand("{datadir}/shards/02.batches.{lang}", datadir=DATADIR, lang=LANGS)
 elif UNTIL == "split":
-    OUTPUT = expand("{datadir}/shards/03.split.{lang}.gz", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{datadir}/shards/03.split.{lang}{paragraphs}.gz", datadir=DATADIR, lang=LANGS, paragraphs=PARAGRAPHS)
 elif UNTIL == "monofixer":
-    OUTPUT = expand("{datadir}/shards/04_01.monofixer.{lang}.gz", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{transient}/{lang}/04_01.monofixer.{lang}{paragraphs}.gz", transient=TRANSIENT, lang=LANGS, paragraphs=PARAGRAPHS)
 elif UNTIL == "monocleaner":
-    OUTPUT = expand("{datadir}/shards/04_02.monocleaner.{lang}.gz", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{transient}/{lang}/04_02.monocleaner.{lang}{paragraphs}.gz", transient=TRANSIENT, lang=LANGS, paragraphs=PARAGRAPHS)
 elif UNTIL == "filter":
-    OUTPUT = expand("{datadir}/shards/04_03.filter.{lang}.gz", datadir=DATADIR, lang=LANGS)
+    OUTPUT = expand("{transient}/{lang}/04_03.filtered.{lang}.gz", transient=TRANSIENT, lang=LANGS)
 
 shell.prefix("set -euo pipefail;")
 
@@ -787,7 +785,7 @@ rule split:
             | {PROFILING} ${{parallel_cmd}} python3 {WORKFLOW}/bitextor_split.py \
                 {params.splitter} {params.customnbp} \
                 --langcode "{wildcards.lang}" \
-                {PRUNE_THRESHOLD} {PRUNE_TYPE} {params.paragraphsid} \
+                {PRUNE_THRESHOLD} {PRUNE_TYPE} {params.paragraphsid} --propagate-metadata \
             | pigz -c > {output}
         """
 
@@ -823,6 +821,9 @@ rule aggregate_split:
 
 ### FILTERING AND CLEANING ######################################
 
+# TODO further rules should use shard and batches, and if we want to reduce only use batches, a rule like split_segalign from bitextor might be used
+#  Explanation: parallelism is trusted to parallel bin, but we are losing job parallelism anyway, since one first step might be the job parallelism and, after that, parallel execution
+
 rule monofixer:
     """
     Apply monofixer to the split sentences output
@@ -832,9 +833,9 @@ rule monofixer:
     :output: plain text, marked as temp, same columns as input with two new columns: hash and score
     """
     input:
-        split=f"{DATADIR}/shards/03.split.{{lang}}{PARAGRAPHS}.gz",
+        split=rules.aggregate_split.output,
     output:
-        temp(f"{DATADIR}/shards/04_01.monofixer.{{lang}}{PARAGRAPHS}.gz"),
+        temp(f"{TRANSIENT}/{{lang}}/04_01.monofixer.{{lang}}{PARAGRAPHS}.gz"),
     threads: THREADS["monofixer"]
     shell:
         """
@@ -849,11 +850,6 @@ rule monofixer:
         """
 
 
-monocleaner_input = rules.monofixer.output
-if not MONOFIXER:
-    monocleaner_input = rules.monofixer.input.split
-
-
 rule monocleaner:
     """
     Compute monocleaner scores of the aligned sentence pairs
@@ -862,10 +858,10 @@ rule monocleaner:
     :output: gz-compressed, same columns as input with one new column: score
     """
     input:
-        monofixer=monocleaner_input,
-        model=lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
+        monofixer=rules.monofixer.output if MONOFIXER else rules.monofixer.input.split,
+        model="" if not MONOCLEANER_MODELS else lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
     output:
-        f"{DATADIR}/shards/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
+        f"{TRANSIENT}/{{lang}}/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
     threads: THREADS["monocleaner"]
     shell:
         """
@@ -874,47 +870,52 @@ rule monocleaner:
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
         CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
+        WC_BYTES=$($CAT {input.monofixer} | wc -c)
+
+        if [[ "$WC_BYTES" == "0" ]]; then
+            # Monocleaner doesn't work if the input is empty
+
+            MONOCLEANER_CMD="cat"
+        else
+            MONOCLEANER_CMD="\
+                {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only \
+                        --add_lang_ident --disable_hardrules --scol 2 -q {input.model} - - \
+                    | paste <($CAT {input.monofixer}) -"
+        fi
+
         $CAT {input.monofixer} \
-                | {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only --add_lang_ident --disable_hardrules --scol 2 -q {input.model} - - \
-                | paste <($CAT {input.monofixer}) - \
-                | pigz -c > {output}
+            | eval "$MONOCLEANER_CMD" \
+            | pigz -c > {output}
         """
-
-
-filter_input = rules.monocleaner.output
-if not MONOCLEANER:
-    filter_input = rules.monocleaner.input.monofixer
 
 
 rule filter:
     """
-    Filter by monoclenaer threshold (if applicable), sort by sentence pair or monofixer hash
+    Filter by monocleaner threshold (if applicable), sort by sentence pair or monofixer hash
     :input: either the output of monocleaner (if enabled), or the output of the previous step (i.e. what would be the input of monocleaner if it was enabled)
     :output: plain-text file, marked as temp, the senteces are sorted by duplicates
         remove sentences below monoclenaer threshold (if applicable)
     """
     input:
-        filter_input,
+        monocleaner=rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
     output:
-        temp(f"{DATADIR}/shards/04_03.filtered.{{lang}}.gz"),
+        temp(f"{TRANSIENT}/{{lang}}/04_03.filtered.{{lang}}.gz"),
     threads: THREADS["filter"]
-    run:
-        cat_cmd = "cat"
-        if input[0][-3:] == ".gz":
-            cat_cmd = "pigz -dcp {threads}"
-        cmd = f""" {cat_cmd} {input} """
-        if MONOCLEANER:
-            cmd += (
-                f""" | {PROFILING} python3 {WORKFLOW}/bitextor_filterbicleaner.py --threshold {MONOCLEANER_THRESHOLD} """
-            )
-        cmd += f""" | LC_ALL=C sort -t $'\t' -k4,4 -k5,5nr --parallel {threads} --compress-program=gzip """  # sorted by monofixer hash and score
-        cmd += f""" | LC_ALL=C sort -t $'\t' -k4,4 -u  --parallel {threads} --compress-program=gzip """ # Dedup
-        cmd += f""" | cut -f2 """ # Extract the sentences
-        cmd += f""" | pigz -c > {output} """
-        shell(cmd)
+    shell:
+        """
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
 
+        $CAT {input} \
+            | ( [[ "{MONOCLEANER}" == "True" ]] \
+                && ({PROFILING} python3 {WORKFLOW}/bitextor_filterbicleaner.py \
+                    --threshold {MONOCLEANER_THRESHOLD}; true) \
+                || cat ) \
+            | LC_ALL=C sort -t $'\t' -k4,4 -k5,5nr --parallel {threads} --compress-program=gzip \
+            | LC_ALL=C sort -t $'\t' -k4,4 -u  --parallel {threads} --compress-program=gzip \
+            | cut -f2 \
+            | pigz -c > {output}
+        """
 
-raw_input_filename = rules.filter.input
 
 rule raw:
     """
@@ -925,7 +926,7 @@ rule raw:
     :output:stats: the corresponding stats file in plain text
     """
     input:
-        raw_input_filename,
+        rules.filter.input.monocleaner,
     output:
         corpus=f"{PERMANENT}/{{lang}}.raw{PARAGRAPHS}.gz",
         stats=f"{PERMANENT}/{{lang}}.stats.raw{PARAGRAPHS}",
@@ -939,7 +940,6 @@ rule raw:
         echo "Words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
         """
 
-sents_input_filename = rules.filter.output
 
 rule sents:
     """
@@ -948,7 +948,7 @@ rule sents:
     :output: the concatenated inputs, sorted, same columns as input
     """
     input:
-        sents_input_filename,
+        rules.filter.output,
     output:
         corpus=f"{PERMANENT}/{{lang}}.sent.gz",
         stats=f"{PERMANENT}/{{lang}}.stats.sent",

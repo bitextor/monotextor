@@ -25,9 +25,11 @@ transientDir: ~/transient
 tempDir: ~/transient
 ```
 
-* `permanentDir`: will contain the final results of the run, i.e. the parallel corpus built
-* `dataDir`: will contain the results of crawling (WARC files) and files generated during preprocessing (plain text extraction, sharding, sentence splitting, tokenisation and translation), i.e. every step up to document alignment
-* `transientDir`: will contain the results of intermediate steps related to document and sentence alignment, as well as cleaning
+<!-- TODO these variables description has been documented according to their use in Bitextor. If TODO's from OUTPUT.md change, this description might change as well -->
+
+* `permanentDir`: will contain the final results of the run, i.e. the monolingual corpus built
+* `dataDir`: will contain the results of crawling (WARC files) and files generated during preprocessing (plain text extraction, sharding and sentence splitting), i.e. every step up to post-processing
+* `transientDir`: will contain the results of intermediate steps related to post-processing (i.e. cleaning and filtering)
 * `tempDir`: will contain temporary files that are needed by some steps and removed immediately after they are no longer required
 
 ## Workflow execution
@@ -36,12 +38,12 @@ There are some optional parameters that allow for a finer control of the executi
 
 ```yaml
 until: preprocess
-parallelWorkers: {segaling: 8, monocleaner: 2}
+parallelWorkers: {split: 8, monocleaner: 2}
 profiling: True
 ```
 
 * `until`: pipeline executes until specified step and stops. The resulting files will not necessarily be in `permanentDir`, they can also be found in `dataDir` or `transientDir` depending on the rule. Allowed values: `crawl`, `preprocess`, `shard`, `split`, `monofixer`, `monocleaner`, `filter`
-* `parallelWorkers`: a dictionary specifying the number of cores that should be used for a job. Allowed values: `split`, `monofixer`, `monocleaner`, `sents`
+* `parallelWorkers`: a dictionary specifying the number of cores that should be used for a job. Allowed values: `split`, `monofixer`, `monocleaner`, `filter`, `sents`
 * `profiling`: use `/usr/bin/time` tool to obtain profiling information about each step.
 
 ## Data sources
@@ -168,7 +170,6 @@ After crawling, the downloaded webs are processed to extract clean text, detect 
 After plain text extracion, the extracted data is sharded via [giashard](https://github.com/paracrawl/giashard) in order to create balanced jobs.
 Crawled websites and WARCs are distributed in shards for a more balanced processing, where each shard contains one or more complete domain(s).
 Shards in turn are split into batches of specified size to keep memory consumption in check.
-Document alignemnt works within shards, i.e. all documents in a shard will be compared for document alignment.
 
 The following set of option define how that process is carried out.
 
@@ -195,7 +196,7 @@ batches: 1024 # batches of up to 1024MB
 ```
 
 * `preprocessor`: this options allows to select one of two text extraction tools, `warc2text` (default) or `warc2preprocess`. `warc2text` is faster but less flexible (less options) than `warc2preprocess`. There is another preprocessor, but cannot be set, and that is `prevertical2text`. This preprocessor will be used automatically when you have prevertical files, which is the format of the SpiderLing crawler. The reason why cannot be set is because is not a generic preprocessor, but specific for SpiderLing files.
-* `langs`: list of languages that will be processed in addition to `lang1` and `lang2`
+* `langs`: list of languages that will be processed
 
 Options specific to `warc2preprocess`:
 
@@ -209,7 +210,6 @@ Options specific to `warc2preprocess`:
 * `PDFextract_configfile`: set a path for a PDFExtract config file, specially for language models for a better sentence splitting (see [more info](https://github.com/bitextor/pdf-extract/#pdfextractjson))
 * `PDFextract_sentence_join_path`: set a path for sentence-join.py script, otherwise, the one included with monotextor will be used
 * `PDFextract_kenlm_path`: set path for kenlm binaries
-<!-- * `plainTextHashes`: file with plain text MurmurHashes from a previous Monotextor run, so only hashes that are not found in this file are processed in Monotextor. This is useful in case you want to fully recrawl a domain but only process updated content. Works with `bitextor-warc2preprocess` -->
 
 Boilerplate:
 
@@ -217,15 +217,18 @@ Boilerplate:
 
 Paragraph identification:
 
-* `paragraphIdentification`: if this option is enabled, the selected `preprocessor` will generate information which will identify the paragraphs. This information will be used to link every sentence to the position which it took in the original paragraph.
+* `paragraphIdentification`: if this option is enabled, the selected `preprocessor` will generate information which will identify the paragraphs. This information will be used to link every sentence to the position which it took in the original paragraph. If `skipSentenceSplitting: true`, the paragraph information will be just the position of the paragraph in the document
 
 Sharding options:
 
-* `shards`: set number of shards, where a value of 'n' will result in 2^n shards, default is 8 (2^8 shards); `shards: 0` will force all domains to be compared for alignment
-* `batches`: batch size in MB, default is 1024; large batches will increase memory consumption during document alignment, but will reduce time overhead
+* `shards`: set number of shards, where a value of 'n' will result in 2^n shards, default is 8 (2^8 shards); `shards: 0` will force all domains to be in the same shard
+* `batches`: batch size in MB, default is 1024; large batches will increase memory consumption, but will reduce time overhead
 
 ## Sentence splitting
 
+By default a Python wrapper of [Loomchild Segment](https://github.com/bitextor/loomchild-segment-py) will be used for sentence splitting.
+
+<!-- TODO different TODO's added to the Snakefile because the options are not in the file args.py
 By default a Python port of [Moses `split-sentences.perl`](https://pypi.org/project/sentence-splitter/) will be used for sentence splitting. This is recommened even without language support, since it is possible to provide custom non-breaking prefixes. External sentence splitter can by used via `sentence-splitters` parameter (less efficient).
 
 Custom sentence splitters must read plain text documents from standard input and write one sentence per line to standard output.
@@ -243,6 +246,8 @@ customNBPs: {
 
 * `sentenceSplitters`: provide custom scripts for sentence segmentation per language, script specified under `default` will be applied to all lanuages
 * `customNBPs`: provide a set of files with custom Non-Breaking Prefixes for the default sentence-splitter; see [already existing files](https://github.com/berkmancenter/mediacloud-sentence-splitter/tree/develop/sentence_splitter/non_breaking_prefixes) for examples
+
+-->
 
 ## Monolingual data filtering
 
@@ -265,22 +270,13 @@ monocleanerThreshold: 0.5
 
 ## Post-processing
 
-Some other options can be configured to specify the output format of the parallel corpus:
+Some other options can be configured to specify the output format of the monolingual corpus:
 
 ```yaml
 monofixer: True
-elrc: True
-
-tmx: True
-deduped: False
 
 deferred: False
 ```
 
 * `monofixer`: use [Monofixer](https://github.com/bitextor/bifixer) to fix parallel sentences and tag near-duplicates for removal <!-- When using `bifixer: True` it is possible to specify additional arguments using `bifixerOptions` variable. More information about these arguments in [Monofixer](https://github.com/bitextor/bifixer) repository. -->
-* `elrc`: include some ELRC quality indicators in the final corpus, such as the ratio of target length to source length; these indicators can be used later to filter-out some segment pairs manually
-* `tmx`: generate a [TMX](https://en.wikipedia.org/wiki/Translation_Memory_eXchange) translation memory of the output corpus
-* `deduped`: generate a de-duplicated tmx and regular versions of the corpus; the tmx corpus will contain a list of URLs for the sentence pairs that were found in multiple websites
-* `deferred`: if this option is set, segment contents (plain text or TMX) are deferred to the original location given a Murmurhash2 64bit checksum
-
-NOTE: In case you need to convert a TMX to a tab-separated plain-text file (Moses format), you could use [TMXT](https://github.com/sortiz/tmxt) tool.
+* `deferred`: if this option is set, segment contents are deferred to the original location given a Murmurhash2 64bit checksum

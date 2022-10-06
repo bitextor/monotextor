@@ -1,0 +1,141 @@
+name: Intensive tests
+
+on:
+   schedule:
+      - cron: '0 3 * * 0'
+   workflow_dispatch:
+      inputs:
+         build_ref:
+            description: 'Ref to use when local build is created (i.e. branch, tag or commit)'
+            default: 'master'
+         test_id:
+            description: 'Run specific test ID'
+            required: false
+            default: 'all'
+            type: choice
+            options:
+               - 'all'
+               - '0x01'
+               - '0x02'
+
+env:
+   WORK: ${{ github.workspace }}
+   TEST_ID: ${{ github.event.inputs.test_id || 'all' }}
+
+jobs:
+   tests:
+      name: ${{ matrix.name }}
+      runs-on: ubuntu-20.04
+      timeout-minutes: 360
+      strategy:
+         fail-fast: false # Continue even when a matrix job fails in order to detect as many errors as possible
+         matrix:
+            include:
+               - name: Tests
+                 test_id: "0x01"
+               - name: Other tests
+                 test_id: "0x02"
+      steps:
+      -  uses: actions/checkout@v3
+         if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
+         with:
+            submodules: 'recursive'
+            ref: ${{ env.BUILD_REF }}
+      -  name: Install required linux packages
+         if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
+         run: |
+            sudo apt-get --assume-yes update
+            sudo apt-get --assume-yes install git time python3 python3-venv python3-pip python3-setuptools \
+               golang-go build-essential cmake libboost-all-dev liblzma-dev time curl pigz parallel wget \
+               uchardet libuchardet-dev libzip-dev libhunspell-dev hunspell-fr
+      -  name: Set up Python3
+         if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
+         uses: actions/setup-python@v2
+         with:
+            python-version: '3.8.5'
+            architecture: 'x64'
+      -  name: Install additional python requirements
+         if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
+         run: |
+            pip3 install --upgrade pip
+            pip3 install .
+            pip3 install ./third_party/monocleaner
+            pip3 install ./third_party/kenlm --install-option="--max_order 7"
+            pip3 install ./third_party/bifixer
+      -  name: Setup golang
+         if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
+         uses: actions/setup-go@v2
+         with:
+            go-version: 1.17.3
+      -  name: Install giashard
+         if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
+         run: |
+            go install github.com/paracrawl/giashard/cmd/giashard@latest
+      -  name: Compiling monotextor and submodules
+         if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
+         run: |
+            mkdir build_cmake && cd build_cmake
+            cmake -DCMAKE_INSTALL_PREFIX=/usr ..
+            make -j
+            sudo make install
+      -  name: Run tests
+         if: ${{ env.TEST_ID == 'all' || env.TEST_ID == matrix.test_id }}
+         id: tests
+         run: |
+            chmod 775 ./tests/run-tests.sh
+            ./tests/run-tests.sh -w "$WORK" -j 4
+      -  name: Print log of tests which failed
+         # https://github.com/actions/runner/issues/1173
+         #if: ${{ steps.tests.conclusion != 'success' }} # Will this work with matrix as expected (i.e. affect just the specific job and not the rest)?
+         if: ${{ always() }}
+         run: |
+            if [[ -f "${WORK}/data/fails.log" ]]; then
+               while read line; do
+                  IFS=$'\t' read -r -a array <<< "$line"
+                  status=${array[0]}
+                  notest=${array[1]}
+                  exit_code=${array[2]}
+
+                  str="# Test $notest (exit code / desc.: $exit_code) #"
+                  eval $(echo printf '"#%0.s"' {1..${#str}}) && printf "\n"
+                  echo "$str"
+                  eval $(echo printf '"#%0.s"' {1..${#str}}) && printf "\n"
+
+                  report_file="${WORK}/reports/${notest}.report"
+
+                  if [[ -f "$report_file" ]]; then
+                     awk -v prefix="(log test $notest)" '{print prefix" "$0}' "$report_file"
+                  else
+                     echo "(warning) No report file found for test $notest (this might be normal depending on the test; check the description)"
+                  fi
+
+                  echo ""
+               done < "${WORK}/data/fails.log"
+            else
+               >&2 echo "ERROR: could not find the file which contain the fails, and should exist"
+               exit 1
+            fi
+      -  name: Upload sent.gz files (artifacts)
+         if: ${{ always() }}
+         uses: actions/upload-artifact@v3
+         with:
+            name: all-sent.gz
+            path: ${{ env.WORK }}/permanent/**/*.sent.gz
+      -  name: Upload raw.gz files (artifacts)
+         if: ${{ always() }}
+         uses: actions/upload-artifact@v3
+         with:
+            name: all-raw.gz
+            path: ${{ env.WORK }}/permanent/**/*.raw.gz
+      -  name: Upload raw.paragraphs.gz files (artifacts)
+         if: ${{ always() }}
+         uses: actions/upload-artifact@v3
+         with:
+            name: all-paragraphs.gz
+            path: ${{ env.WORK }}/permanent/**/*.raw.paragraphs.gz
+      -  name: Upload report files (artifacts)
+         if: ${{ always() }}
+         uses: actions/upload-artifact@v3
+         with:
+            name: reports
+            path: ${{ env.WORK }}/reports/*.report

@@ -29,6 +29,10 @@ sudo apt install git time python3 python3-venv python3-pip golang-go build-essen
 sudo apt install wget
 ## warc2text:
 sudo apt install uchardet libuchardet-dev libzip-dev
+## Monocleaner:
+sudo apt install libhunspell-dev
+### Hunspell dictionaries (example)
+sudo apt install hunspell-es
 ## Heritrix, PDFExtract and boilerpipe:
 sudo apt install openjdk-8-jdk
 ## PDFExtract:
@@ -45,6 +49,10 @@ sudo dnf install git time python-devel python3-pip golang-go cmake pigz parallel
 sudo dnf install perl-FindBin perl-Time-HiRes perl-Thread
 ## warc2text:
 sudo dnf install uchardet-devel libzip-devel
+## Monocleaner:
+sudo dnf install hunspell hunspell-devel
+### Hunspell dictionaries (example)
+sudo dnf install hunspell-es
 ```
 
 ### C++ dependencies
@@ -61,9 +69,9 @@ make -j install
 Optionally, it is possible to skip the compilation of the dependencies that are not expected to be used:
 
 ```bash
-cmake -DSKIP_MGIZA=ON -DCMAKE_INSTALL_PREFIX=$HOME/.local .. # MGIZA is used for dictionary generation
+cmake -DSKIP_WARC2TEXT=ON -DCMAKE_INSTALL_PREFIX=$HOME/.local ..
 # other dependencies that can optionally be skipped:
-# WARC2TEXT, PREVERTICAL2TEXT, DOCALIGN, BLEUALIGN, HUNALIGN, BIROAMER, KENLM
+# WARC2TEXT, PREVERTICAL2TEXT, KENLM
 ```
 
 ### Golang packages
@@ -91,8 +99,9 @@ pip3 install --upgrade pip
 # monotextor:
 pip3 install .
 # additional dependencies:
-pip3 install ./monocleaner && pip install ./kenlm --install-option="--max_order 7"
-pip3 install ./bifixer
+pip3 install ./third_party/monocleaner
+pip3 install ./third_party/kenlm --install-option="--max_order 7"
+pip3 install ./third_party/bifixer
 ```
 
 If you don't want to install all Python requirements in `requirements.txt` because you don't expect to run some of Monotextor modules, you can comment those `*.txt` in `requirements.txt` and rerun Monotextor installation.

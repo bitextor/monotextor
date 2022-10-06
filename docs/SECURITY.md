@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Bitextor versions currently being supported with security updates.
+Monotextor versions currently being supported with security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |

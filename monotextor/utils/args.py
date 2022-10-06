@@ -72,14 +72,13 @@ def validate_args(config):
         'until': {
             'type': 'string',
             'allowed': [
-                'crawl', 'preprocess', 'shard', 'split', 'translate', 'tokenise',
-                'tokenise_src', 'tokenise_trg', 'docalign', 'segalign', 'filter'
+                'crawl', 'preprocess', 'shard', 'split', 'monofixer', 'monocleaner', 'filter'
             ]
         },
         'parallelWorkers': {
             'type': 'dict',
             'allowed': [
-                'split', 'translate', 'tokenise', 'docalign', 'segalign', 'filter'
+                'split', 'monofixer', 'monocleaner', 'filter', 'sents'
             ],
             'valuesrules': {'type': 'integer', 'min': 1}
         },
@@ -98,22 +97,22 @@ def validate_args(config):
             'check_with': isduration
         },
         ## wget or linguacrawl:
-        'crawlerUserAgent': {'type': 'string', 'dependencies': {'cralwer': ['wget', 'linguacrawl']}},
+        'crawlerUserAgent': {'type': 'string', 'dependencies': {'crawler': ['wget', 'linguacrawl']}},
         'crawlWait': {'type': 'integer', 'dependencies': {'crawler': ['wget', 'linguacrawl']}},
         'crawlFileTypes': {'type': 'list', 'dependencies': {'crawler': ['wget', 'linguacrawl']}},
         ## only linguacrawl:
-        'crawlTLD': {'type': 'list', 'check_with': isstrlist, 'dependencies': {'crawler': ['linguacrawl']}},
-        'crawlSizeLimit': {'type': 'integer', 'dependencies': {'crawler': ['linguacrawl']}},
+        'crawlTLD': {'type': 'list', 'check_with': isstrlist, 'dependencies': {'crawler': 'linguacrawl'}},
+        'crawlSizeLimit': {'type': 'integer', 'dependencies': {'crawler': 'linguacrawl'}},
         'crawlCat': {'type': 'boolean', 'dependencies': {'crawler': 'linguacrawl'}},
         'crawlCatMaxSize': {'type': 'integer', 'dependencies': {'crawlCat': True}},
         'crawlMaxFolderTreeDepth': {'type': 'string', 'dependencies': {'crawler': 'linguacrawl'}},
         'crawlScoutSteps': {'type': 'string', 'dependencies': {'crawler': 'linguacrawl'}},
         'crawlBlackListURL': {'type': 'list', 'check_with': isstrlist, 'dependencies': {'crawler': 'linguacrawl'}},
         'crawlPrefixFilter': {'type': 'list', 'check_with': isstrlist, 'dependencies': {'crawler': 'linguacrawl'}},
-        'crawlerNumThreads': {'type': 'integer', 'dependencies': {'crawler': ['linguacrawl']}},
-        'crawlerConnectionTimeout': {'type': 'integer', 'dependencies': {'crawler': ['linguacrawl']}},
-        'dumpCurrentCrawl': {'type': 'boolean', 'dependencies': {'crawler': ['linguacrawl']}},
-        'resumePreviousCrawl': {'type': 'boolean', 'dependencies': {'crawler': ['linguacrawl']}},
+        'crawlerNumThreads': {'type': 'integer', 'dependencies': {'crawler': 'linguacrawl'}},
+        'crawlerConnectionTimeout': {'type': 'integer', 'dependencies': {'crawler': 'linguacrawl'}},
+        'dumpCurrentCrawl': {'type': 'boolean', 'dependencies': {'crawler': 'linguacrawl'}},
+        'resumePreviousCrawl': {'type': 'boolean', 'dependencies': {'crawler': 'linguacrawl'}},
         ## only heritrix
         'heritrixPath': {'type': 'string', 'dependencies': {'crawler': 'heritrix'}},
         'heritrixUrl': {'type': 'string', 'dependencies': {'crawler': 'heritrix'}},
@@ -125,7 +124,7 @@ def validate_args(config):
         'batches': {'type': 'integer', 'min': 1, 'default': 1024},
         'paragraphIdentification': {'type': 'boolean', 'default': False},
         # specific to warc2text:
-        'writeHTML': {'type': 'boolean', 'dependencies': {'preprocessor': ['warc2text']}},
+        'writeHTML': {'type': 'boolean', 'dependencies': {'preprocessor': 'warc2text'}},
         # specific to warc2preprocess:
         'cleanHTML': {'type': 'boolean', 'dependencies': {'preprocessor': 'warc2preprocess'}},
         'ftfy': {'type': 'boolean', 'dependencies': {'preprocessor': 'warc2preprocess'}},
@@ -150,6 +149,8 @@ def validate_args(config):
         # sentence splitting
         'pruneThreshold': {'type': 'integer', 'min': 0, 'default': 0},
         'pruneType': {'type': 'string', 'allowed': ['words', 'chars'], 'default': 'words'},
+        'sentenceSplitters': {'type': 'dict'}, # TODO possible future implementation
+        'customNBPs': {'type': 'dict'}, # TODO possible future implementation
         # post processing
         'deferred': {'type': 'boolean', 'default': False},
         'monofixer': {'type': 'boolean', 'default': False},

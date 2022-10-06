@@ -1,19 +1,19 @@
 [submodule "bifixer"]
-	path = bifixer
+	path = third_party/bifixer
 	url = https://github.com/bitextor/bifixer.git
 [submodule "preprocess"]
-	path = preprocess
+	path = third_party/preprocess
 	url = https://github.com/kpu/preprocess.git
 [submodule "monocleaner"]
-	path = monocleaner
+	path = third_party/monocleaner
 	url = https://github.com/bitextor/monocleaner.git
 	branch=main
 [submodule "warc2text"]
-	path = warc2text
+	path = third_party/warc2text
 	url = https://github.com/bitextor/warc2text.git
 [submodule "prevertical2text"]
-	path = prevertical2text
+	path = third_party/prevertical2text
 	url = https://github.com/bitextor/prevertical2text.git
 [submodule "kenlm"]
-	path = kenlm
+	path = third_party/kenlm
 	url = https://github.com/kpu/kenlm.git
