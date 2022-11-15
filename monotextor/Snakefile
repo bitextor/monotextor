@@ -879,7 +879,7 @@ rule monocleaner:
         else
             MONOCLEANER_CMD="\
                 {PROFILING} cache -k 2 ${{parallel_cmd}} monocleaner --score_only \
-                        --add_lang_ident --disable_hardrules --scol 2 -q {input.model} - - \
+                        --add_lang_ident --detect_script --disable_hardrules --scol 2 -q {input.model} - - \
                     | paste <($CAT {input.monofixer}) -"
         fi
 
