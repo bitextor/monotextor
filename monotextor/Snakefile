@@ -677,7 +677,8 @@ rule prevertical2text:
     shell:
         """
         mkdir -p {params.folder}
-        cat {input} | \
+        CAT=cat; if [[ {input} == *.gz ]]; then CAT=zcat; fi
+        $CAT {input} | \
             python3 {WORKFLOW}/bitextor_prevertical_lang_iso639_1.py | \
             {PROFILING} prevertical2text -o {params.folder} -s -f {params.f} {params.boilerplate} {params.paragraphsid} -
         for lang in {LANGS}; do
