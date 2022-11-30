@@ -933,11 +933,12 @@ rule raw:
         stats=f"{PERMANENT}/{{lang}}.stats.raw{PARAGRAPHS}",
     shell:
         """
+        if [[ "{PARAGRAPHS}" == ".paragraphs" ]]; then UNIT=Paragraphs; else UNIT=Sentences; fi
         cat {input} > {output.corpus}
         echo "Raw" > {output.stats}
         echo "File size: $(du -h {output.corpus} | cut -f 1)" >> {output.stats}
         WC1=$(zcat {output.corpus} | cut -f 2 | wc -wl | tr -s ' ')
-        echo "Sentence pairs: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
+        echo "$UNIT: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
         echo "Words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
         """
 
@@ -959,7 +960,7 @@ rule sents:
         echo "Filtered" > {output.stats}
         echo "File size: $(du -h {output.corpus} | cut -f 1)" >> {output.stats}
         WC1=$(zcat {output.corpus} | cut -f 2 | wc -wl | tr -s ' ')
-        echo "Sentence pairs: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
+        echo "Sentences: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
         echo "Words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
         """
 
