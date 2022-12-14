@@ -25,14 +25,24 @@ def genericerror(msg):
 
     return f
 
-def isfile(field, value, error):
+def isfiledir(field, value, error, check_func):
+    ''' Generic function that checks whether if a parameter is a file or a dir '''
     if isinstance(value, list):
         for element in value:
-            if not os.path.isfile(os.path.expanduser(element)):
+            if not check_func(os.path.expanduser(element)):
                 error(field, f'{element} does not exist')
-    elif not os.path.isfile(os.path.expanduser(value)):
+    elif isinstance(value, dict):
+        for key, element in value.items():
+            if not check_func(os.path.expanduser(element)):
+                error(field, f'"{element}" of {key} does not exist')
+    elif not check_func(os.path.expanduser(value)):
         error(field, f'{value} does not exist')
 
+def isfile(field, value, error):
+    isfiledir(field, value, error, os.path.isfile)
+
+def isdir(field, value, error):
+    isfiledir(field, value, error, os.path.isdir)
 
 def isstrlist(field, value, error):
     if not isinstance(value, list):
@@ -201,6 +211,7 @@ def validate_args(config):
         schema['until']['allowed'].append('monocleaner')
         schema['parallelWorkers']['allowed'].append('monocleaner')
         schema['monocleanerModels']['required'] = True
+        schema['monocleanerModels']['check_with'] = isdir
 
     if provided_in_config['until'] and (config['until'] == 'filter' or config['until'] == 'monofixer'):
         print(
