@@ -274,9 +274,11 @@ Some other options can be configured to specify the output format of the monolin
 
 ```yaml
 monofixer: True
+monofixerTitles: False
 
 deferred: False
 ```
 
 * `monofixer`: use [Monofixer](https://github.com/bitextor/bifixer) to fix parallel sentences and tag near-duplicates for removal <!-- When using `bifixer: True` it is possible to specify additional arguments using `bifixerOptions` variable. More information about these arguments in [Monofixer](https://github.com/bitextor/bifixer) repository. -->
+* `monofixerTitles`: apply monofixer to document titles extracted from preverticals.
 * `deferred`: if this option is set, segment contents are deferred to the original location given a Murmurhash2 64bit checksum
