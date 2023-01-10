@@ -851,6 +851,42 @@ rule monofixer:
         """
 
 
+rule monofixer_titles:
+    """
+    Apply monofixer to the document titles
+    :input: a single chunk of sentence splitting step output
+        gz-compressed, columns are: url sent deferred title and other metadata
+        (deferred is optional)
+    :output: plain text, marked as temp, same columns as input
+    """
+    input:
+        monofixer=rules.monofixer.output if MONOFIXER else rules.monofixer.input.split,
+    output:
+        temp(f"{TRANSIENT}/{{lang}}/04_02.monofixer_titles.{{lang}}{PARAGRAPHS}.gz"),
+    threads: THREADS["monofixer"]
+    shell:
+        """
+        CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
+        parallel_cmd=""
+        if [ {threads} -gt 1 ]; then
+            parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
+        fi
+        $CAT {input.monofixer} \
+            | {PROFILING} ${{parallel_cmd}} monofixer --scol 4 --ignore_normalization --ignore_segmentation --ignore_empty --ignore_duplicates -q - - "{wildcards.lang}" \
+            | pigz -c > {output}
+        """
+
+
+if "monofixerTitles" in config and config["monofixerTitles"]:
+    # Monofixer titles enabled, if monofixer is disabled in this case rule monofixer_titles is consuming directly the split output
+    input_monocleaner = rules.monofixer_titles.output
+elif not MONOFIXER:
+    # Disabled monofixer titles and monofixer
+    input_monocleaner = rules.monofixer.input.split
+else:
+    # Disabled monofixer titles only
+    input_monocleaner = rules.monofixer.output
+
 rule monocleaner:
     """
     Compute monocleaner scores of the aligned sentence pairs
@@ -859,10 +895,10 @@ rule monocleaner:
     :output: gz-compressed, same columns as input with one new column: score
     """
     input:
-        monofixer=rules.monofixer.output if MONOFIXER else rules.monofixer.input.split,
+        monofixer=input_monocleaner,
         model="" if not MONOCLEANER_MODELS else lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
     output:
-        f"{TRANSIENT}/{{lang}}/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
+        f"{TRANSIENT}/{{lang}}/04_03.monocleaner.{{lang}}{PARAGRAPHS}.gz",
     threads: THREADS["monocleaner"]
     shell:
         """
@@ -900,7 +936,7 @@ rule filter:
     input:
         monocleaner=rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
     output:
-        temp(f"{TRANSIENT}/{{lang}}/04_03.filtered.{{lang}}.gz"),
+        temp(f"{TRANSIENT}/{{lang}}/04_04.filtered.{{lang}}.gz"),
     threads: THREADS["filter"]
     shell:
         """

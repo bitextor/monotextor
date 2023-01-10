@@ -171,6 +171,7 @@ def validate_args(config):
         'monocleanerModels': {'type': 'dict', 'dependencies': {'monocleaner': True}},
         'monocleanerThreshold': {'type': 'float'},
         'skipSentenceSplitting': {'type': 'boolean', 'default': False},
+        'monofixerTitles': {'type': 'boolean', 'default': False},
     }
 
     provided_in_config = {} # contains info about the definition of rules in the configuration file
