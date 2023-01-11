@@ -944,7 +944,8 @@ rule filter:
 
         $CAT {input} \
             | ( [[ "{MONOCLEANER}" == "True" ]] \
-                && ({PROFILING} awk -F$'\t' -v lang={wildcards.lang} '$11 == lang && $12>=0.5'; true) \
+                && ({PROFILING} awk -F$'\t' -v lang={wildcards.lang} \
+                    '$11 == lang && $12>={MONOCLEANER_THRESHOLD}'; true) \
                 || cat ) \
             | LC_ALL=C sort -t $'\t' -k4,4 -k5,5nr --parallel {threads} --compress-program=gzip \
             | LC_ALL=C sort -t $'\t' -k4,4 -u  --parallel {threads} --compress-program=gzip \
