@@ -846,7 +846,10 @@ rule monofixer:
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
         $CAT {input.split} \
-            | {PROFILING} ${{parallel_cmd}} monofixer --ignore_normalization --ignore_segmentation --ignore_empty -q - - "{wildcards.lang}" {AGGRESSIVE_DEDUP} {MONOFIXER_DEFERRED_COLS} \
+            | {PROFILING} ${{parallel_cmd}} monofixer \
+                --ignore_normalization --ignore_segmentation --ignore_empty \
+                --ignore_long {AGGRESSIVE_DEDUP} {MONOFIXER_DEFERRED_COLS} \
+                -q - - "{wildcards.lang}" \
             | pigz -c > {output}
         """
 
