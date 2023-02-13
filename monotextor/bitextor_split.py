@@ -139,7 +139,7 @@ with open_xz_or_gzip_or_plain(options.text) if options.text != "-" else sys.stdi
             #  since the previous error for which we skip the sentence splitting can't handle correctly
             #  the metadata, what might lead to unexpected results in further stages. Furthermore, the
             #  malformed BASE64 content might lead to further stages to fail as well
-            continue
+            content = ""
 
         content = content.split("\n")
 
