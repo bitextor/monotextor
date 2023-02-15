@@ -72,7 +72,7 @@ Monotextor is a pipeline that runs a collection of scripts to produce a monoling
 1. **Crawling**: documents are downloaded from the specified websites
 2. **Pre-processing**: downloaded documents are normalized, boilerplates are removed, plain text is extracted, and language is identified
 3. **Sentence splitting**: split the documents into sentences
-4. **Post-processing**: final steps that allow to clean the parallel corpus obtained using the tool [Monocleaner](https://github.com/bitextor/monocleaner), deduplicates translation units, and computes additional quality metrics
+4. **Post-processing**: final steps that allow to clean the parallel corpus obtained using the tool [Monocleaner](https://github.com/bitextor/monocleaner), deduplicates, and computes additional quality metrics
 
 The following diagram shows the structure of the pipeline and the different scripts that are used in each stage:
 
