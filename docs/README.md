@@ -6,7 +6,7 @@
 
 `Monotextor` is a tool to automatically harvest monolingual text from websites. To run it, it is necessary to provide:
 
-1. The source where the parallel data will be searched: one or more websites (namely, Monotextor needs [website hostnames](https://en.wikipedia.org/wiki/URL) or [WARC files](https://iipc.github.io/warc-specifications/specifications/warc-format/warc-1.1/))
+1. The source where the textual data will be searched: one or more websites (namely, Monotextor needs [website hostnames](https://en.wikipedia.org/wiki/URL) or [WARC files](https://iipc.github.io/warc-specifications/specifications/warc-format/warc-1.1/))
 2. The languages on which the user is interested: language IDs must be provided following the [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes)
 
 ## Installation
