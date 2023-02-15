@@ -57,7 +57,7 @@ Monotextor uses a configuration file to define the variables required by the pip
 
 ## Monotextor output
 
-Monotextor generates the final parallel corpora in multiple formats. These files will be placed in `permanentDir` folder and will have the following format: `{lang}.{prefix}.gz`, where `{prefix}` corresponds to a descriptor of the corresponding format. The list of files that may be produced is the following:
+Monotextor generates the final monolingual corpora in multiple formats. These files will be placed in `permanentDir` folder and will have the following format: `{lang}.{prefix}.gz`, where `{prefix}` corresponds to a descriptor of the corresponding format. The list of files that may be produced is the following:
 
 * `{lang}.raw.gz` - default (always generated)
 * `{lang}.sent.gz` - generated if `skipSentenceSplitting: false` or not provided.
@@ -67,7 +67,7 @@ See [detailed description](OUTPUT.md) of the output files.
 
 ## Pipeline description
 
-Monotextor is a pipeline that runs a collection of scripts to produce a parallel corpus from a collection of multilingual websites. The pipeline is divided in five stages:
+Monotextor is a pipeline that runs a collection of scripts to produce a monolingua corpus from websites. The pipeline is divided in five stages:
 
 1. **Crawling**: documents are downloaded from the specified websites
 2. **Pre-processing**: downloaded documents are normalized, boilerplates are removed, plain text is extracted, and language is identified
