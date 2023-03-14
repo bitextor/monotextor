@@ -680,7 +680,7 @@ rule prevertical2text:
         CAT=cat; if [[ {input} == *.gz ]]; then CAT=zcat; fi
         $CAT {input} | \
             python3 {WORKFLOW}/bitextor_prevertical_lang_iso639_1.py | \
-            {PROFILING} prevertical2text -o {params.folder} -s -f {params.f} {params.boilerplate} {params.paragraphsid} -
+            {PROFILING} prevertical2text -c -o {params.folder} -s -f {params.f} {params.boilerplate} {params.paragraphsid} -
         for lang in {LANGS}; do
             if [ ! -f {params.folder}/$lang/text.gz ]; then
                 >&2 echo "WARNING: no \'$lang\' data found in {wildcards.target}: creating empty files instead"
