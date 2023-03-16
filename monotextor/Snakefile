@@ -778,11 +778,12 @@ rule split:
     threads: THREADS["split"]
     shell:
         """
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
         parallel_cmd=""
         if [ {threads} -gt 1 ]; then
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
-        zcat {input} \
+        $CAT {input} \
             | {PROFILING} ${{parallel_cmd}} python3 {WORKFLOW}/bitextor_split.py \
                 {params.splitter} {params.customnbp} \
                 --langcode "{wildcards.lang}" \
@@ -840,7 +841,7 @@ rule monofixer:
     threads: THREADS["monofixer"]
     shell:
         """
-        CAT=cat; if [[ {input.split} == *.gz ]]; then CAT=zcat; fi
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
         parallel_cmd=""
         if [ {threads} -gt 1 ]; then
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
@@ -869,7 +870,7 @@ rule monofixer_titles:
     threads: THREADS["monofixer"]
     shell:
         """
-        CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
         parallel_cmd=""
         if [ {threads} -gt 1 ]; then
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
@@ -909,7 +910,7 @@ rule monocleaner:
         if [ {threads} -gt 1 ]; then
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
-        CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
+        CAT=$([[ {input.monofixer} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
         WC_BYTES=$($CAT {input.monofixer} | wc -c)
 
         if [[ "$WC_BYTES" == "0" ]]; then
