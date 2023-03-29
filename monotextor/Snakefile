@@ -914,7 +914,7 @@ rule monocleaner:
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
         CAT=$([[ {input.monofixer} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
-        WC_BYTES=$($CAT {input.monofixer} | wc -c)
+        WC_BYTES=$($CAT {input.monofixer} | head | wc -c)
 
         if [[ "$WC_BYTES" == "0" ]]; then
             # Monocleaner doesn't work if the input is empty
