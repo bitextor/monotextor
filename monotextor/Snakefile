@@ -286,7 +286,7 @@ THREADS = {
     "split": 1,
     "monofixer": 1,
     "monocleaner": 1,
-    "sensitive_data": 1,
+    "sensitiveData": 1,
     "filter": 1,
     "sents": 1,
 }
