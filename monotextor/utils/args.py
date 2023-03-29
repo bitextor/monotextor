@@ -88,7 +88,7 @@ def validate_args(config):
         'parallelWorkers': {
             'type': 'dict',
             'allowed': [
-                'split', 'monofixer', 'monocleaner', 'filter', 'sents'
+                'split', 'monofixer', 'monocleaner', 'sensitiveData', 'filter', 'sents'
             ],
             'valuesrules': {'type': 'integer', 'min': 1}
         },
@@ -172,6 +172,7 @@ def validate_args(config):
         'monocleanerThreshold': {'type': 'float'},
         'skipSentenceSplitting': {'type': 'boolean', 'default': False},
         'monofixerTitles': {'type': 'boolean', 'default': False},
+        'sensitiveData': {'type': 'boolean', 'default': False},
     }
 
     provided_in_config = {} # contains info about the definition of rules in the configuration file

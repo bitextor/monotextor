@@ -218,6 +218,8 @@ if "monocleaner" in config and config["monocleaner"]:
     MONOCLEANER_FIELDS = ["lang_ident", "monocleaner"]
 if "monocleanerThreshold" in config:
     MONOCLEANER_THRESHOLD = config["monocleanerThreshold"]
+if "sensitiveData" in config and config["sensitiveData"]:
+    SENSITIVE_DATA = True
 
 FIELDS = FIELDS + PARAGRAPH_IDENTIFICATION_FIELDS + MONOFIXER_FIELDS + MONOCLEANER_FIELDS
 
@@ -284,6 +286,7 @@ THREADS = {
     "split": 1,
     "monofixer": 1,
     "monocleaner": 1,
+    "sensitive_data": 1,
     "filter": 1,
     "sents": 1,
 }
@@ -929,6 +932,34 @@ rule monocleaner:
             | pigz -c > {output}
         """
 
+rule sensitive_data:
+    """
+    Look for sensitive data (IPs, emails, phone numbers)
+    :input: either the output of monocleaner (if enabled), or the output of the previous step (i.e. what would be the input of monocleaner if it was enabled)
+    :output: plain-text file, marked as temp
+    """
+    input:
+        monocleaner=rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
+    output:
+        temp(f"{TRANSIENT}/{{lang}}/04_04.sensitive_data.{{lang}}{PARAGRAPHS}.gz"),
+    threads: THREADS["sensitiveData"]
+    shell:
+        """
+        parallel_cmd=""
+        if [ {threads} -gt 1 ]; then
+            parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k --block 10M"
+        fi
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
+
+        $CAT {input} | {PROFILING} ${{parallel_cmd}} python {WORKFLOW}/monotextor_sensitive_data.py \
+            | pigz -c >{output}
+        """
+
+# Only run sensitive data for paragraphs
+if SENSITIVE_DATA and PARAGRAPHS:
+    input_filter = rules.sensitive_data.output
+else:
+    input_filter = rules.sensitive_data.input.monocleaner
 
 rule filter:
     """
@@ -938,9 +969,9 @@ rule filter:
         remove sentences below monoclenaer threshold (if applicable)
     """
     input:
-        monocleaner=rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
+        sens_data=input_filter,
     output:
-        temp(f"{TRANSIENT}/{{lang}}/04_04.filtered.{{lang}}.gz"),
+        temp(f"{TRANSIENT}/{{lang}}/04_05.filtered.{{lang}}.gz"),
     threads: THREADS["filter"]
     shell:
         """
@@ -967,7 +998,7 @@ rule raw:
     :output:stats: the corresponding stats file in plain text
     """
     input:
-        rules.filter.input.monocleaner,
+        rules.filter.input.sens_data,
     output:
         corpus=f"{PERMANENT}/{{lang}}.raw{PARAGRAPHS}.gz",
         stats=f"{PERMANENT}/{{lang}}.stats.raw{PARAGRAPHS}",
