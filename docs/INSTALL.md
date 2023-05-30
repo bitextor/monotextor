@@ -92,7 +92,7 @@ pip3 install --upgrade pip
 pip3 install .
 # additional dependencies:
 pip3 install ./third_party/monocleaner
-pip3 install ./third_party/kenlm --install-option="--max_order 7"
+pip3 install ./third_party/kenlm --config-settings="--build-option=--max_order=7"
 pip3 install ./third_party/bifixer
 ```
 
