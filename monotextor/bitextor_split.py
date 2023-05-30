@@ -21,12 +21,13 @@ import argparse
 import base64
 import string
 import logging
+import re
 
 from sentence_splitter import SentenceSplitter, SentenceSplitterException
 from loomchild.segmenter import LoomchildSegmenter
 
-from bitextor.utils.common import open_xz_or_gzip_or_plain
-from bitextor.utils.common import ExternalTextProcessor
+from monotextor.utils.common import open_xz_or_gzip_or_plain
+from monotextor.utils.common import ExternalTextProcessor
 
 
 # True -> keep sentence
@@ -139,7 +140,7 @@ with open_xz_or_gzip_or_plain(options.text) if options.text != "-" else sys.stdi
             #  since the previous error for which we skip the sentence splitting can't handle correctly
             #  the metadata, what might lead to unexpected results in further stages. Furthermore, the
             #  malformed BASE64 content might lead to further stages to fail as well
-            continue
+            content = ""
 
         content = content.split("\n")
 
@@ -159,19 +160,24 @@ with open_xz_or_gzip_or_plain(options.text) if options.text != "-" else sys.stdi
                                                         options.prune_threshold, not options.dont_filter, return_list=True)
             suffix_offset = 2 if process_paragraphs else 1
             suffix = ('\t' if len(column) > suffix_offset else '') + '\t'.join(column[suffix_offset:]) + '\n' if propagate_metadata else '\n'
-
+            paragraph_id = 0
+            total_paragraphs = 0
             if process_paragraphs:
-                try:
-                    paragraph_id = int(column[1]) + 1 # Start at 1
-                except ValueError as e:
-                    raise Exception(f"Couldn't process document #{doc_idx}, sentence #{sent_idx}") from e
+                pattern = re.compile("^([0-9]+):([0-9]+)$")
+                m = re.match(pattern, column[1])
+                if m:
+                    paragraph_id = int(m.group(1)) # Starts at 1
+                    total_paragraphs = int(m.group(2))
 
-                # Add the paragraph data to the splitted sentences
-                for idx in range(len(sentences_wo_paragraphs)):
-                    sentences += f"{sentences_wo_paragraphs[idx]}\tp{paragraph_id}s{idx + 1}/{len(sentences_wo_paragraphs)}{suffix}"
-            else:
-                for idx in range(len(sentences_wo_paragraphs)):
-                    sentences += f"{sentences_wo_paragraphs[idx]}{suffix}"
+                    if paragraph_id > total_paragraphs:
+                        logging.warning(f"Paragraph id > total paragraphs (bug?): {paragraph_id} > {total_paragraphs}")
+
+                else:
+                    raise Exception(f"Couldn't process document #{doc_idx}, sentence #{sent_idx}")
+
+            for idx in range(len(sentences_wo_paragraphs)):
+                infix = f"\tp{paragraph_id}:{total_paragraphs}s{idx + 1}/{len(sentences_wo_paragraphs)}" if process_paragraphs else '' # Paragraph data
+                sentences += f"{sentences_wo_paragraphs[idx]}{infix}{suffix}"
 
         sentences = base64.b64encode(sentences.encode("utf-8")).decode("utf-8")
 

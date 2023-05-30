@@ -1,0 +1,1 @@
+cyhunspell @ git+https://github.com/MSeal/cython_hunspell@2.0.3

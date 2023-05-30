@@ -24,7 +24,7 @@ jobs:
             sudo apt-get --assume-yes update
             sudo apt-get --assume-yes install git time python3 python3-venv python3-pip python3-setuptools \
                golang-go build-essential cmake libboost-all-dev liblzma-dev time curl pigz parallel wget \
-               uchardet libuchardet-dev libzip-dev libhunspell-dev hunspell-fr
+               uchardet libuchardet-dev libzip-dev autopoint autoconf automake libtool
       -  name: Set up Python3
          uses: actions/setup-python@v2
          with:
@@ -38,7 +38,7 @@ jobs:
             pip3 install --upgrade pip
             pip3 install .
             pip3 install ./third_party/monocleaner
-            pip3 install ./third_party/kenlm --install-option="--max_order 7"
+            pip3 install ./third_party/kenlm --config-settings="--build-option=--max_order=7"
             pip3 install ./third_party/bifixer
       -  name: Setup golang
          uses: actions/setup-go@v2

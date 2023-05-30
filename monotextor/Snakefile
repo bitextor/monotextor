@@ -190,6 +190,7 @@ MONOCLEANER = False
 MONOCLEANER_MODELS = {}
 MONOCLEANER_FIELDS = []
 MONOCLEANER_THRESHOLD = 0.0
+SENSITIVE_DATA = False
 if not PARAGRAPHS:
     OUTPUT_FILES = ["sent", "raw"]
     STATS_FILES = ["sent", "raw"]
@@ -218,6 +219,8 @@ if "monocleaner" in config and config["monocleaner"]:
     MONOCLEANER_FIELDS = ["lang_ident", "monocleaner"]
 if "monocleanerThreshold" in config:
     MONOCLEANER_THRESHOLD = config["monocleanerThreshold"]
+if "sensitiveData" in config and config["sensitiveData"]:
+    SENSITIVE_DATA = True
 
 FIELDS = FIELDS + PARAGRAPH_IDENTIFICATION_FIELDS + MONOFIXER_FIELDS + MONOCLEANER_FIELDS
 
@@ -284,6 +287,7 @@ THREADS = {
     "split": 1,
     "monofixer": 1,
     "monocleaner": 1,
+    "sensitiveData": 1,
     "filter": 1,
     "sents": 1,
 }
@@ -677,9 +681,10 @@ rule prevertical2text:
     shell:
         """
         mkdir -p {params.folder}
-        cat {input} | \
+        CAT=cat; if [[ {input} == *.gz ]]; then CAT=zcat; fi
+        $CAT {input} | \
             python3 {WORKFLOW}/bitextor_prevertical_lang_iso639_1.py | \
-            {PROFILING} prevertical2text -o {params.folder} -s -f {params.f} {params.boilerplate} {params.paragraphsid} -
+            {PROFILING} prevertical2text -c -o {params.folder} -s -f {params.f} {params.boilerplate} {params.paragraphsid} -
         for lang in {LANGS}; do
             if [ ! -f {params.folder}/$lang/text.gz ]; then
                 >&2 echo "WARNING: no \'$lang\' data found in {wildcards.target}: creating empty files instead"
@@ -777,11 +782,12 @@ rule split:
     threads: THREADS["split"]
     shell:
         """
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
         parallel_cmd=""
         if [ {threads} -gt 1 ]; then
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
-        zcat {input} \
+        $CAT {input} \
             | {PROFILING} ${{parallel_cmd}} python3 {WORKFLOW}/bitextor_split.py \
                 {params.splitter} {params.customnbp} \
                 --langcode "{wildcards.lang}" \
@@ -839,16 +845,55 @@ rule monofixer:
     threads: THREADS["monofixer"]
     shell:
         """
-        CAT=cat; if [[ {input.split} == *.gz ]]; then CAT=zcat; fi
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
         parallel_cmd=""
         if [ {threads} -gt 1 ]; then
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
         $CAT {input.split} \
-            | {PROFILING} ${{parallel_cmd}} monofixer --ignore_normalization --ignore_segmentation --ignore_empty -q - - "{wildcards.lang}" {AGGRESSIVE_DEDUP} {MONOFIXER_DEFERRED_COLS} \
+            | {PROFILING} ${{parallel_cmd}} monofixer \
+                --ignore_normalization --ignore_segmentation --ignore_empty \
+                --ignore_long {AGGRESSIVE_DEDUP} {MONOFIXER_DEFERRED_COLS} \
+                -q - - "{wildcards.lang}" \
             | pigz -c > {output}
         """
 
+
+rule monofixer_titles:
+    """
+    Apply monofixer to the document titles
+    :input: a single chunk of sentence splitting step output
+        gz-compressed, columns are: url sent deferred title and other metadata
+        (deferred is optional)
+    :output: plain text, marked as temp, same columns as input
+    """
+    input:
+        monofixer=rules.monofixer.output if MONOFIXER else rules.monofixer.input.split,
+    output:
+        temp(f"{TRANSIENT}/{{lang}}/04_02.monofixer_titles.{{lang}}{PARAGRAPHS}.gz"),
+    threads: THREADS["monofixer"]
+    shell:
+        """
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
+        parallel_cmd=""
+        if [ {threads} -gt 1 ]; then
+            parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
+        fi
+        $CAT {input.monofixer} \
+            | {PROFILING} ${{parallel_cmd}} monofixer --scol 4 --ignore_normalization --ignore_segmentation --ignore_empty --ignore_duplicates -q - - "{wildcards.lang}" \
+            | pigz -c > {output}
+        """
+
+
+if "monofixerTitles" in config and config["monofixerTitles"]:
+    # Monofixer titles enabled, if monofixer is disabled in this case rule monofixer_titles is consuming directly the split output
+    input_monocleaner = rules.monofixer_titles.output
+elif not MONOFIXER:
+    # Disabled monofixer titles and monofixer
+    input_monocleaner = rules.monofixer.input.split
+else:
+    # Disabled monofixer titles only
+    input_monocleaner = rules.monofixer.output
 
 rule monocleaner:
     """
@@ -858,10 +903,10 @@ rule monocleaner:
     :output: gz-compressed, same columns as input with one new column: score
     """
     input:
-        monofixer=rules.monofixer.output if MONOFIXER else rules.monofixer.input.split,
+        monofixer=input_monocleaner,
         model="" if not MONOCLEANER_MODELS else lambda wildcards: MONOCLEANER_MODELS[wildcards.lang],
     output:
-        f"{TRANSIENT}/{{lang}}/04_02.monocleaner.{{lang}}{PARAGRAPHS}.gz",
+        f"{TRANSIENT}/{{lang}}/04_03.monocleaner.{{lang}}{PARAGRAPHS}.gz",
     threads: THREADS["monocleaner"]
     shell:
         """
@@ -869,7 +914,7 @@ rule monocleaner:
         if [ {threads} -gt 1 ]; then
             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
         fi
-        CAT=cat; if [[ {input.monofixer} == *.gz ]]; then CAT=zcat; fi
+        CAT=$([[ {input.monofixer} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
         WC_BYTES=$($CAT {input.monofixer} | wc -c)
 
         if [[ "$WC_BYTES" == "0" ]]; then
@@ -888,6 +933,34 @@ rule monocleaner:
             | pigz -c > {output}
         """
 
+rule sensitive_data:
+    """
+    Look for sensitive data (IPs, emails, phone numbers)
+    :input: either the output of monocleaner (if enabled), or the output of the previous step (i.e. what would be the input of monocleaner if it was enabled)
+    :output: plain-text file, marked as temp
+    """
+    input:
+        monocleaner=rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
+    output:
+        temp(f"{TRANSIENT}/{{lang}}/04_04.sensitive_data.{{lang}}{PARAGRAPHS}.gz"),
+    threads: THREADS["sensitiveData"]
+    shell:
+        """
+        parallel_cmd=""
+        if [ {threads} -gt 1 ]; then
+            parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k --block 10M"
+        fi
+        CAT=$([[ {input} == *.gz ]] && echo "pigz -dcp {threads}" || echo "cat")
+
+        $CAT {input} | {PROFILING} ${{parallel_cmd}} python {WORKFLOW}/monotextor_sensitive_data.py \
+            | pigz -c >{output}
+        """
+
+# Only run sensitive data for paragraphs
+if SENSITIVE_DATA and PARAGRAPHS:
+    input_filter = rules.sensitive_data.output
+else:
+    input_filter = rules.sensitive_data.input.monocleaner
 
 rule filter:
     """
@@ -897,9 +970,9 @@ rule filter:
         remove sentences below monoclenaer threshold (if applicable)
     """
     input:
-        monocleaner=rules.monocleaner.output if MONOCLEANER else rules.monocleaner.input.monofixer,
+        sens_data=input_filter,
     output:
-        temp(f"{TRANSIENT}/{{lang}}/04_03.filtered.{{lang}}.gz"),
+        temp(f"{TRANSIENT}/{{lang}}/04_05.filtered.{{lang}}.gz"),
     threads: THREADS["filter"]
     shell:
         """
@@ -907,8 +980,8 @@ rule filter:
 
         $CAT {input} \
             | ( [[ "{MONOCLEANER}" == "True" ]] \
-                && ({PROFILING} python3 {WORKFLOW}/bitextor_filterbicleaner.py \
-                    --threshold {MONOCLEANER_THRESHOLD}; true) \
+                && ({PROFILING} awk -F$'\t' -v lang={wildcards.lang} \
+                    '$11 ~ "^"lang && $12>={MONOCLEANER_THRESHOLD}'; true) \
                 || cat ) \
             | LC_ALL=C sort -t $'\t' -k4,4 -k5,5nr --parallel {threads} --compress-program=gzip \
             | LC_ALL=C sort -t $'\t' -k4,4 -u  --parallel {threads} --compress-program=gzip \
@@ -926,17 +999,18 @@ rule raw:
     :output:stats: the corresponding stats file in plain text
     """
     input:
-        rules.filter.input.monocleaner,
+        rules.filter.input.sens_data,
     output:
         corpus=f"{PERMANENT}/{{lang}}.raw{PARAGRAPHS}.gz",
         stats=f"{PERMANENT}/{{lang}}.stats.raw{PARAGRAPHS}",
     shell:
         """
+        if [[ "{PARAGRAPHS}" == ".paragraphs" ]]; then UNIT=Paragraphs; else UNIT=Sentences; fi
         cat {input} > {output.corpus}
         echo "Raw" > {output.stats}
         echo "File size: $(du -h {output.corpus} | cut -f 1)" >> {output.stats}
         WC1=$(zcat {output.corpus} | cut -f 2 | wc -wl | tr -s ' ')
-        echo "Sentence pairs: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
+        echo "$UNIT: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
         echo "Words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
         """
 
@@ -958,7 +1032,7 @@ rule sents:
         echo "Filtered" > {output.stats}
         echo "File size: $(du -h {output.corpus} | cut -f 1)" >> {output.stats}
         WC1=$(zcat {output.corpus} | cut -f 2 | wc -wl | tr -s ' ')
-        echo "Sentence pairs: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
+        echo "Sentences: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
         echo "Words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
         """
 
