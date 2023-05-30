@@ -22,37 +22,29 @@ These are some external tools that need to be in the path before installing the 
 
 ```bash
 # mandatory:
-sudo apt install git time python3 python3-venv python3-pip golang-go build-essential cmake libboost-all-dev liblzma-dev time curl pigz parallel
+sudo apt install git time python3 python3-venv python3-pip golang-go build-essential cmake libboost-all-dev liblzma-dev time curl pigz parallel autopoint autoconf automake libtool
 
 # optional, feel free to skip dependencies for components that you don't expect to use:
 ## wget crawler:
 sudo apt install wget
 ## warc2text:
 sudo apt install uchardet libuchardet-dev libzip-dev
-## Monocleaner:
-sudo apt install libhunspell-dev
-### Hunspell dictionaries (example)
-sudo apt install hunspell-es
 ## Heritrix, PDFExtract and boilerpipe:
 sudo apt install openjdk-8-jdk
 ## PDFExtract:
 ## PDFExtract also requires protobuf installed for CLD3 (installation instructions below)
-sudo apt install autoconf automake libtool ant maven poppler-utils apt-transport-https ca-certificates gnupg software-properties-common
+sudo apt install ant maven poppler-utils apt-transport-https ca-certificates gnupg software-properties-common
 ```
 
 If you are using a RPM based system, use these instead:
 
 ```bash
 # mandatory:
-sudo dnf install git time python-devel python3-pip golang-go cmake pigz parallel boost-devel xz-devel uchardet zlib-devel gcc-c++
+sudo dnf install git time python-devel python3-pip golang-go cmake pigz parallel boost-devel xz-devel uchardet zlib-devel gcc-c++ gettext-devel automake autoconf libtool
 ## Moses Perl tokenizer
 sudo dnf install perl-FindBin perl-Time-HiRes perl-Thread
 ## warc2text:
 sudo dnf install uchardet-devel libzip-devel
-## Monocleaner:
-sudo dnf install hunspell hunspell-devel
-### Hunspell dictionaries (example)
-sudo dnf install hunspell-es
 ```
 
 ### C++ dependencies
