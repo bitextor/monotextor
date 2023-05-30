@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     setuptools.setup(
         name="monotextor",
-        version="1.0.0",
+        version="1.1.0",
         install_requires=requirements,
         license="GNU General Public License v3.0",
         #author=,
